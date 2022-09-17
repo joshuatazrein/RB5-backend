@@ -1,0 +1,14 @@
+{
+  "name": "riverbank-backend",
+  "version": "1.0.0",
+  "description": "A backend server for authenticating clients",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Joshua Tazman Reinier",
+  "license": "ISC",
+  "dependencies": {
+    "googleapis": "^107.0.0"
+  }
+}
