@@ -1,11 +1,12 @@
 const process = require('process')
-const ORIGIN = process.env.PATH?.includes('/Users/jreinier')
-  ? 'http://localhost:3000'
-  : 'https://riverbank.app'
+// const ORIGIN = process.env.PATH?.includes('/Users/jreinier')
+//   ? 'http://localhost:3000'
+//   : 'https://riverbank.app'
 const SERVER = process.env.PATH?.includes('/Users/jreinier')
   ? 'http://localhost:3001/auth'
   : 'https://riverbank.app/auth'
 const keys = require('./keys.json')
+console.log(SERVER + '/access')
 
 const {
   google: {
@@ -21,19 +22,16 @@ const port = process.env.PORT || 3001
 const oauth2Client = new OAuth2(
   keys.web.client_id,
   keys.web.client_secret,
-  'https://riverbank.app/success'
+  `${SERVER}/access`
 )
 
 app.post(
   '/auth/access',
   cors({ origin: 'http://localhost:3000' }),
   async (req, res) => {
-    console.log('responding to', req.query.code, req)
-    oauth2Client.generateAuthUrl()
     oauth2Client.getToken(req.query.code).then(
       tokens => res.json(tokens),
       err => {
-        console.log(err)
         res.send(err.message)
       }
     )
