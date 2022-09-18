@@ -1,3 +1,6 @@
+// const ORIGIN = 'https://riverbank.app/'
+const ORIGIN = 'http://localhost:3000'
+
 const keys = require('./keys.json')
 
 const {
@@ -14,7 +17,7 @@ const port = 3001
 const oauth2Client = new OAuth2(
   keys.web.client_id,
   keys.web.client_secret,
-  'http://localhost:3001/access'
+  `${ORIGIN}/auth/access`
 )
 
 // generate a url that asks permissions for Blogger and Google Calendar scopes
@@ -42,7 +45,7 @@ app.get('/access', async (req, res) => {
   const { tokens } = await oauth2Client.getToken(req.query.code)
   console.log(tokens)
   res.redirect(
-    `http://localhost:3000/?access_token=${tokens.access_token}&scope=${tokens.scope}&expiry_date=${tokens.expiry_date}` +
+    `${ORIGIN}/?access_token=${tokens.access_token}&scope=${tokens.scope}&expiry_date=${tokens.expiry_date}` +
       (tokens.refresh_token ? `&refresh_token=${tokens.refresh_token}` : '')
   )
 })
