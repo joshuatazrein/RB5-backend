@@ -12,7 +12,7 @@ const {
 const express = require('express')
 const cors = require('cors')
 const app = express()
-const port = 3001``
+const port = process.env.PORT || 3001
 
 const oauth2Client = new OAuth2(
   keys.web.client_id,
