@@ -12,12 +12,12 @@ const {
 const express = require('express')
 const cors = require('cors')
 const app = express()
-const port = 3001
+const port = 3001``
 
 const oauth2Client = new OAuth2(
   keys.web.client_id,
   keys.web.client_secret,
-  `${ORIGIN}/auth/access`
+  `${ORIGIN}/access`
 )
 
 // generate a url that asks permissions for Blogger and Google Calendar scopes
