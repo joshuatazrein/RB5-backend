@@ -1,7 +1,7 @@
 const process = require('process')
-// const ORIGIN = process.env.PATH?.includes('/Users/jreinier')
-//   ? 'http://localhost:3000'
-//   : 'https://riverbank.app'
+const ORIGIN = process.env.PATH?.includes('/Users/jreinier')
+  ? 'http://localhost:3000'
+  : 'https://riverbank.app'
 const SERVER = process.env.PATH?.includes('/Users/jreinier')
   ? 'http://localhost:3001/auth'
   : 'https://riverbank.app/auth'
@@ -25,14 +25,21 @@ const oauth2Client = new OAuth2(
   `${SERVER}/access`
 )
 
-app.post(
+app.get(
   '/auth/access',
   cors({ origin: 'http://localhost:3000' }),
   async (req, res) => {
     oauth2Client.getToken(req.query.code).then(
-      tokens => res.json(tokens),
+      ({ tokens }) => {
+        res.redirect(
+          `${ORIGIN}/?access_token=${tokens.access_token}&scope=${tokens.scope}&expiry_date=${tokens.expiry_date}` +
+            (tokens.refresh_token
+              ? `&refresh_token=${tokens.refresh_token}`
+              : '')
+        )
+      },
       err => {
-        res.send(err.message)
+        res.redirect(`${ORIGIN}/?err=${err.message}`)
       }
     )
   }
