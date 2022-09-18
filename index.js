@@ -17,7 +17,7 @@ const port = process.env.PORT || 3001
 const oauth2Client = new OAuth2(
   keys.web.client_id,
   keys.web.client_secret,
-  `${ORIGIN}/access`
+  `${ORIGIN}/auth/access`
 )
 
 // generate a url that asks permissions for Blogger and Google Calendar scopes
