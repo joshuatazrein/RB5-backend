@@ -50,7 +50,7 @@ app.get(
   cors({ origin: 'http://localhost:3000' }),
   async (req, res) => {
     oauth2Client.revokeToken(req.query.access_token).then(
-      res => res.send('success'),
+      () => res.send('success'),
       err => res.send(err.message)
     )
   }
