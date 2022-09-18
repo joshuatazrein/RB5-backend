@@ -1,6 +1,10 @@
-const ORIGIN = 'https://riverbank.app'
-// const ORIGIN = 'http://localhost:3000'
-
+const process = require('process')
+const ORIGIN = process.env.PATH?.includes('/Users/jreinier')
+  ? 'http://localhost:3000'
+  : 'https://riverbank.app'
+const SERVER = process.env.PATH?.includes('/Users/jreinier')
+  ? 'http://localhost:3001/auth'
+  : 'https://riverbank.app/auth'
 const keys = require('./keys.json')
 
 const {
@@ -17,45 +21,33 @@ const port = process.env.PORT || 3001
 const oauth2Client = new OAuth2(
   keys.web.client_id,
   keys.web.client_secret,
-  `${ORIGIN}/auth/access`
+  'https://riverbank.app/success'
 )
 
-// generate a url that asks permissions for Blogger and Google Calendar scopes
-const scopes = [
-  'https://www.googleapis.com/auth/drive.appdata',
-  'https://www.googleapis.com/auth/drive.file',
-  'https://www.googleapis.com/auth/tasks',
-  'https://www.googleapis.com/auth/calendar.readonly',
-  'https://www.googleapis.com/auth/calendar.events'
-]
-
-const url = oauth2Client.generateAuthUrl({
-  // 'online' (default) or 'offline' (gets refresh_token)
-  access_type: 'offline',
-
-  // If you only need one scope you can pass it as a string
-  scope: scopes
-})
-
-console.log(url)
-
-app.get('/auth/access', async (req, res) => {
-  console.log(req.query.code)
-  // res.json({ code: req.query.code })
-  const { tokens } = await oauth2Client.getToken(req.query.code)
-  console.log(tokens)
-  res.redirect(
-    `${ORIGIN}/?access_token=${tokens.access_token}&scope=${tokens.scope}&expiry_date=${tokens.expiry_date}` +
-      (tokens.refresh_token ? `&refresh_token=${tokens.refresh_token}` : '')
-  )
-})
+app.post(
+  '/auth/access',
+  cors({ origin: 'http://localhost:3000' }),
+  async (req, res) => {
+    console.log('responding to', req.query.code, req)
+    oauth2Client.generateAuthUrl()
+    oauth2Client.getToken(req.query.code).then(
+      tokens => res.json(tokens),
+      err => {
+        console.log(err)
+        res.send(err.message)
+      }
+    )
+  }
+)
 
 app.get(
   '/auth/revoke',
   cors({ origin: 'http://localhost:3000' }),
   async (req, res) => {
-    oauth2Client.revokeToken(req.query.access_token)
-    res.send('success')
+    oauth2Client.revokeToken(req.query.access_token).then(
+      res => res.send('success'),
+      err => res.send(err.message)
+    )
   }
 )
 
@@ -63,14 +55,17 @@ app.get(
   '/auth/refresh',
   cors({ origin: 'http://localhost:3000' }),
   async (req, res) => {
-    const refresh_token = req.query.refresh_token
-    oauth2Client.setCredentials({
-      refresh_token
-    })
-    console.log(oauth2Client.credentials, refresh_token)
-    const newToken = await oauth2Client.refreshAccessToken()
-    console.log(newToken, newToken.credentials)
-    res.json(newToken.credentials)
+    try {
+      const refresh_token = req.query.refresh_token
+      oauth2Client.setCredentials({
+        refresh_token
+      })
+      console.log(oauth2Client.credentials, refresh_token)
+      const newToken = await oauth2Client.refreshAccessToken()
+      res.json(newToken.credentials)
+    } catch (err) {
+      res.send(err.message)
+    }
   }
 )
 

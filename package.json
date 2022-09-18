@@ -12,6 +12,7 @@
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.18.1",
-    "googleapis": "^107.0.0"
+    "googleapis": "^107.0.0",
+    "url-encrypt": "^0.0.5"
   }
 }
