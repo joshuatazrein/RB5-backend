@@ -39,7 +39,7 @@ const url = oauth2Client.generateAuthUrl({
 
 console.log(url)
 
-app.get('/access', async (req, res) => {
+app.get('/auth/access', async (req, res) => {
   console.log(req.query.code)
   // res.json({ code: req.query.code })
   const { tokens } = await oauth2Client.getToken(req.query.code)
@@ -51,7 +51,7 @@ app.get('/access', async (req, res) => {
 })
 
 app.get(
-  '/revoke',
+  '/auth/revoke',
   cors({ origin: 'http://localhost:3000' }),
   async (req, res) => {
     oauth2Client.revokeToken(req.query.access_token)
@@ -60,7 +60,7 @@ app.get(
 )
 
 app.get(
-  '/refresh',
+  '/auth/refresh',
   cors({ origin: 'http://localhost:3000' }),
   async (req, res) => {
     const refresh_token = req.query.refresh_token
