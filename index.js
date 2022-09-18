@@ -1,5 +1,5 @@
-// const ORIGIN = 'https://riverbank.app/'
-const ORIGIN = 'http://localhost:3000'
+const ORIGIN = 'https://riverbank.app/'
+// const ORIGIN = 'http://localhost:3000'
 
 const keys = require('./keys.json')
 
