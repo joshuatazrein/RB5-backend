@@ -21,20 +21,24 @@ const port = process.env.PORT || 3001
 const oauth2Client = new OAuth2(
   keys.web.client_id,
   keys.web.client_secret,
-  'https://riverbank.app/success'
+  `${SERVER}/access`
 )
 
-app.post(
+app.get(
   '/auth/access',
   cors({ origin: 'http://localhost:3000' }),
   async (req, res) => {
     console.log('responding to', req.query.code, req)
-    oauth2Client.generateAuthUrl()
     oauth2Client.getToken(req.query.code).then(
-      tokens => res.json(tokens),
-      err => {
-        console.log(err)
-        res.send(err.message)
+      tokens =>
+        res.redirect(
+          `${ORIGIN}/?access_token=${tokens.access_token}&scope=${tokens.scope}&expiry_date=${tokens.expiry_date}` +
+            (tokens.refresh_token
+              ? `&refresh_token=${tokens.refresh_token}`
+              : '')
+        ),
+      () => {
+        res.redirect(`${ORIGIN}/?err=${err.message}`)
       }
     )
   }
