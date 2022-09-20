@@ -1,8 +1,8 @@
 const process = require('process')
-const ORIGIN = process.env.PATH?.includes('/Users/jreinier')
+const ORIGIN = process.env.PATH.includes('/Users/jreinier')
   ? 'http://localhost:3000'
   : 'https://riverbank.app'
-const SERVER = process.env.PATH?.includes('/Users/jreinier')
+const SERVER = process.env.PATH.includes('/Users/jreinier')
   ? 'http://localhost:3001/auth'
   : 'https://riverbank.app/auth'
 const keys = require('./keys.json')
