@@ -6,7 +6,6 @@ const SERVER = process.env.PATH?.includes('/Users/jreinier')
   ? 'http://localhost:3001/auth'
   : 'https://riverbank.app/auth'
 const keys = require('./keys.json')
-console.log(SERVER + '/access')
 
 const {
   google: {
@@ -65,7 +64,6 @@ app.get(
       oauth2Client.setCredentials({
         refresh_token
       })
-      console.log(oauth2Client.credentials, refresh_token)
       const newToken = await oauth2Client.refreshAccessToken()
       res.json(newToken.credentials)
     } catch (err) {
@@ -74,6 +72,4 @@ app.get(
   }
 )
 
-app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`)
-})
+app.listen(port, () => {})
