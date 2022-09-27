@@ -92,7 +92,9 @@ app.post('/auth/google/request', async (req, res) => {
     res.send(result.data)
   } catch (err) {
     console.log(err)
-    res.status(400).send(err.message)
+    res
+      .status(400)
+      .send(err.message + '\nData recieved: ' + JSON.stringify(req.body))
   }
 })
 
