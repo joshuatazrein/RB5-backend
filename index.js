@@ -7,6 +7,8 @@ const SERVER = process.env.PATH.includes('/Users/jreinier')
   : 'https://riverbank.app/auth'
 const keys = require('./keys.json')
 const axios = require('axios')
+const users = require('./users.json')
+const fs = require('fs')
 
 const {
   google: {
@@ -27,6 +29,7 @@ const oauth2Client = new OAuth2(
 )
 
 app.use('/auth/google/request', express.json())
+app.use('/auth/google/requestWithId', express.json())
 var allowedDomains = ['capacitor://localhost', 'http://localhost:3000']
 app.use(
   cors({
@@ -43,13 +46,19 @@ app.use(
   })
 )
 
+// for browser-based registration (server holds codes)
 app.get('/auth/access', async (req, res) => {
   oauth2Client.getToken(req.query.code).then(
-    ({ tokens }) => {
-      res.redirect(
-        `${ORIGIN}/?access_token=${tokens.access_token}&scope=${tokens.scope}&expiry_date=${tokens.expiry_date}` +
-          (tokens.refresh_token ? `&refresh_token=${tokens.refresh_token}` : '')
+    async ({ tokens }) => {
+      const userInfo = await oauth2Client.getTokenInfo(tokens.access_token)
+      console.log(userInfo)
+      const user_id = userInfo.email
+      users[user_id] = tokens
+      console.log(users)
+      fs.writeFile('./users.json', JSON.stringify(users), () =>
+        console.log('wrote file')
       )
+      res.redirect(`${ORIGIN}/?user_id=${user_id}`)
     },
     err => {
       res.redirect(`${ORIGIN}/?err=${err.message}`)
@@ -66,7 +75,7 @@ app.get('/auth/revoke', async (req, res) => {
 
 app.get('/auth/refresh', async (req, res) => {
   try {
-    const refresh_token = req.query.refresh_token
+    const refresh_token = users[req.query.userEmail]
     oauth2Client.setCredentials({
       refresh_token
     })
@@ -89,6 +98,25 @@ app.post('/auth/google/request', async (req, res) => {
   try {
     console.log(req, req.body)
     const result = await axios.request(req.body)
+    res.send(result.data)
+  } catch (err) {
+    console.log(err)
+    res
+      .status(400)
+      .send(err.message + '\nData recieved: ' + JSON.stringify(req.body))
+  }
+})
+
+app.post('/auth/google/requestWithId', async (req, res) => {
+  try {
+    console.log(req, req.body)
+    const request = req.body
+    request.headers = {
+      ...request.headers,
+      Authorization: `Bearer ${users[req.query.user_id].access_token}`
+    }
+    console.log(request)
+    const result = await axios.request(request)
     res.send(result.data)
   } catch (err) {
     console.log(err)
