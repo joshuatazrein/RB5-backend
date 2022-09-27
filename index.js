@@ -15,6 +15,7 @@ const {
 
 const express = require('express')
 const cors = require('cors')
+const { signInMyNotion } = require('./notionApi')
 const app = express()
 const port = process.env.PORT || 3001
 
@@ -68,6 +69,18 @@ app.get(
       res.json(newToken.credentials)
     } catch (err) {
       res.send(err.message)
+    }
+  }
+)
+
+app.get(
+  '/auth/notion/signIn',
+  cors({ origin: 'http://localhost:3000' }),
+  async (req, res) => {
+    try {
+      res.json(await signInMyNotion())
+    } catch (err) {
+      res.status(400).send(err.message)
     }
   }
 )
