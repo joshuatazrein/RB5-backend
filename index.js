@@ -87,6 +87,7 @@ app.get('/auth/notion/signIn', async (req, res) => {
 
 app.post('/auth/google/request', async (req, res) => {
   try {
+    console.log(req, req.body)
     const result = await axios.request(req.body)
     res.send(result.data)
   } catch (err) {
