@@ -28,8 +28,14 @@ const oauth2Client = new OAuth2(
   `${SERVER}/access`
 )
 
+const saveUsers = () =>
+  fs.writeFile('./users.json', JSON.stringify(users), () => {})
+
 app.use('/auth/google/request', express.json())
 app.use('/auth/google/requestWithId', express.json())
+app.use('/auth/google/requestWithToken', express.json())
+app.use('/auth/google/registerId', express.json())
+
 var allowedDomains = ['capacitor://localhost', 'http://localhost:3000']
 app.use(
   cors({
@@ -46,46 +52,6 @@ app.use(
   })
 )
 
-// for browser-based registration (server holds codes)
-app.get('/auth/access', async (req, res) => {
-  oauth2Client.getToken(req.query.code).then(
-    async ({ tokens }) => {
-      const userInfo = await oauth2Client.getTokenInfo(tokens.access_token)
-      console.log(userInfo)
-      const user_id = userInfo.email
-      users[user_id] = tokens
-      console.log(users)
-      fs.writeFile('./users.json', JSON.stringify(users), () =>
-        console.log('wrote file')
-      )
-      res.redirect(`${ORIGIN}/?user_id=${user_id}`)
-    },
-    err => {
-      res.redirect(`${ORIGIN}/?err=${err.message}`)
-    }
-  )
-})
-
-app.get('/auth/revoke', async (req, res) => {
-  oauth2Client.revokeToken(req.query.access_token).then(
-    () => res.send('success'),
-    err => res.send(err.message)
-  )
-})
-
-app.get('/auth/refresh', async (req, res) => {
-  try {
-    const refresh_token = users[req.query.userEmail]
-    oauth2Client.setCredentials({
-      refresh_token
-    })
-    const newToken = await oauth2Client.refreshAccessToken()
-    res.json(newToken.credentials)
-  } catch (err) {
-    res.send(err.message)
-  }
-})
-
 app.get('/auth/notion/signIn', async (req, res) => {
   try {
     res.json(await signInMyNotion())
@@ -94,35 +60,93 @@ app.get('/auth/notion/signIn', async (req, res) => {
   }
 })
 
-app.post('/auth/google/request', async (req, res) => {
+// for browser-based registration (server holds codes)
+app.get('/auth/access', async (req, res) => {
+  console.log(
+    'requested access with redirect:',
+    `${SERVER}/access`,
+    oauth2Client
+  )
+  oauth2Client.getToken(req.query.code).then(
+    async ({ tokens }) => {
+      const userInfo = await oauth2Client.getTokenInfo(tokens.access_token)
+      console.log(userInfo)
+      const user_id = userInfo.email
+      console.log(tokens)
+      users[user_id] = tokens
+      saveUsers()
+      console.log('success:', userInfo, tokens, req.query)
+      if (!req.query.noRedirect) {
+        res.redirect(`${ORIGIN}/?user_id=${user_id}`)
+      } else {
+        res.send(user_id)
+      }
+    },
+    err => {
+      if (!req.query.noRedirect) {
+        res.redirect(`${ORIGIN}/?err=${err.message}`)
+      } else {
+        res.send(err.message + ' Recieved: ' + JSON.stringify(req.query))
+      }
+    }
+  )
+})
+
+app.get('/auth/google/signOut', async (req, res) => {
   try {
-    console.log(req, req.body)
-    const result = await axios.request(req.body)
-    res.send(result.data)
+    const token = users[req.query.user_id].access_token
+    delete users[req.query.user_id]
+    oauth2Client.revokeToken(token).then(
+      () => {
+        saveUsers()
+        res.send('success')
+      },
+      err => res.status(400).send(err.message)
+    )
   } catch (err) {
-    console.log(err)
-    res
-      .status(400)
-      .send(err.message + '\nData recieved: ' + JSON.stringify(req.body))
+    res.status(400).send(err.message)
   }
 })
 
 app.post('/auth/google/requestWithId', async (req, res) => {
   try {
-    console.log(req, req.body)
     const request = req.body
     request.headers = {
       ...request.headers,
       Authorization: `Bearer ${users[req.query.user_id].access_token}`
     }
-    console.log(request)
     const result = await axios.request(request)
+    console.log('success:', result.data)
     res.send(result.data)
   } catch (err) {
-    console.log(err)
-    res
-      .status(400)
-      .send(err.message + '\nData recieved: ' + JSON.stringify(req.body))
+    console.log('error', err.response)
+    if ([401, 403].includes(err.response.status)) {
+      try {
+        // re-initialize client
+        console.log('refreshing', users[req.query.user_id])
+        oauth2Client.setCredentials(users[req.query.user_id])
+        const { credentials } = await oauth2Client.refreshAccessToken()
+        users[req.query.user_id] = credentials
+        saveUsers()
+
+        const request = req.body
+        request.headers = {
+          ...request.headers,
+          Authorization: `Bearer ${users[req.query.user_id].access_token}`
+        }
+        const result = await axios.request(request)
+        console.log('success:', result.data)
+        res.send(result.data)
+      } catch (err) {
+        res
+          .status(400)
+          .send(err.message + '\nData recieved: ' + JSON.stringify(req.body))
+      }
+    } else {
+      res
+        .status(400)
+        .send(err.message + '\nData recieved: ' + JSON.stringify(req.body))
+    }
   }
 })
 
