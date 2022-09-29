@@ -36,7 +36,11 @@ app.use('/auth/google/requestWithId', express.json())
 app.use('/auth/google/requestWithToken', express.json())
 app.use('/auth/google/registerId', express.json())
 
-var allowedDomains = ['capacitor://localhost', 'http://localhost:3000']
+var allowedDomains = [
+  'capacitor://localhost',
+  'http://localhost:3000',
+  'https://riverbank.app'
+]
 app.use(
   cors({
     origin: function (origin, callback) {
