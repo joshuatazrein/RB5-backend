@@ -74,12 +74,12 @@ app.get('/auth/access', async (req, res) => {
   oauth2Client.getToken(req.query.code).then(
     async ({ tokens }) => {
       const userInfo = await oauth2Client.getTokenInfo(tokens.access_token)
-      console.log(userInfo)
+
       const user_id = userInfo.email
-      console.log(tokens)
+
       users[user_id] = tokens
       saveUsers()
-      console.log('success:', userInfo, tokens, req.query)
+
       if (!req.query.noRedirect) {
         res.redirect(`${ORIGIN}/?user_id=${user_id}`)
       } else {
@@ -120,14 +120,13 @@ app.post('/auth/google/requestWithId', async (req, res) => {
       Authorization: `Bearer ${users[req.query.user_id].access_token}`
     }
     const result = await axios.request(request)
-    console.log('success:', result.data)
+
     res.send(result.data)
   } catch (err) {
-    console.log('error', err.response)
-    if ([401, 403].includes(err.response.status)) {
+    if (err.response && [401, 403].includes(err.response.status)) {
       try {
         // re-initialize client
-        console.log('refreshing', users[req.query.user_id])
+
         oauth2Client.setCredentials(users[req.query.user_id])
         const { credentials } = await oauth2Client.refreshAccessToken()
         users[req.query.user_id] = credentials
@@ -139,12 +138,16 @@ app.post('/auth/google/requestWithId', async (req, res) => {
           Authorization: `Bearer ${users[req.query.user_id].access_token}`
         }
         const result = await axios.request(request)
-        console.log('success:', result.data)
+
         res.send(result.data)
       } catch (err) {
-        res
-          .status(400)
-          .send(err.message + '\nData recieved: ' + JSON.stringify(req.body))
+        if (err.message === 'invalid_grant') {
+          res.status(401).send(err.message)
+        } else {
+          res
+            .status(400)
+            .send(err.message + '\nData recieved: ' + JSON.stringify(req.body))
+        }
       }
     } else {
       res
