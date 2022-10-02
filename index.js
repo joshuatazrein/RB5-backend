@@ -66,11 +66,6 @@ app.get('/auth/notion/signIn', async (req, res) => {
 
 // for browser-based registration (server holds codes)
 app.get('/auth/access', async (req, res) => {
-  console.log(
-    'requested access with redirect:',
-    `${SERVER}/access`,
-    oauth2Client
-  )
   oauth2Client.getToken(req.query.code).then(
     async ({ tokens }) => {
       const userInfo = await oauth2Client.getTokenInfo(tokens.access_token)
