@@ -32,9 +32,9 @@ const saveUsers = () =>
   fs.writeFile('./users.json', JSON.stringify(users), () => {})
 
 app.use('/auth/google/request', express.json())
-app.use('/auth/google/requestWithId', express.json())
-app.use('/auth/google/requestWithToken', express.json())
+app.use('/auth/google/requestWithId', express.json({ limit: '50mb' }))
 app.use('/auth/google/registerId', express.json())
+app.use('/auth/google/registerTokens', express.json())
 
 var allowedDomains = [
   'capacitor://localhost',
@@ -91,6 +91,19 @@ app.get('/auth/access', async (req, res) => {
   )
 })
 
+app.post('/auth/google/registerTokens', async (req, res) => {
+  try {
+    const tokens = req.body
+    const userInfo = await oauth2Client.getTokenInfo(tokens.access_token)
+    const user_id = userInfo.email
+    users[user_id] = tokens
+    saveUsers()
+    res.send(user_id)
+  } catch (err) {
+    res.status(400).send(err.message)
+  }
+})
+
 app.get('/auth/google/signOut', async (req, res) => {
   try {
     const token = users[req.query.user_id].access_token
@@ -145,6 +158,7 @@ app.post('/auth/google/requestWithId', async (req, res) => {
         }
       }
     } else {
+      console.log('Bad request:', err)
       res
         .status(400)
         .send(err.message + '\nData recieved: ' + JSON.stringify(req.body))
