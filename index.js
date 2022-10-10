@@ -22,6 +22,41 @@ const { signInMyNotion } = require('./notionApi')
 const app = express()
 const port = process.env.PORT || 3001
 
+const { getUser } = require('@notionhq/client/build/src/api-endpoints')
+
+const crypto = require('crypto')
+const key = Buffer.from(keys.cipher.key)
+
+function encrypt(text) {
+  const iv = crypto.randomBytes(16)
+  const cipher = crypto.createCipheriv('aes-256-cbc', key, iv)
+  let encrypted = cipher.update(text)
+  encrypted = Buffer.concat([encrypted, cipher.final()])
+  return {
+    iv: iv.toString('hex'),
+    encryptedData: encrypted.toString('hex')
+  }
+}
+
+function decrypt(text) {
+  const iv = Buffer.from(text.iv, 'hex')
+  let encryptedText = Buffer.from(text.encryptedData, 'hex')
+
+  let decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(key), iv)
+  let decrypted = decipher.update(encryptedText)
+  decrypted = Buffer.concat([decrypted, decipher.final()])
+
+  return decrypted.toString()
+}
+
+function getEmailFromQuery(req) {
+  const encryptedId = req.query.user_id.split(';')
+  const encryptedData = encryptedId[0]
+  const iv = encryptedId[1]
+  const user_email = decrypt({ encryptedData, iv })
+  return user_email
+}
+
 const oauth2Client = new OAuth2(
   keys.web.client_id,
   keys.web.client_secret,
@@ -70,15 +105,23 @@ app.get('/auth/access', async (req, res) => {
     async ({ tokens }) => {
       const userInfo = await oauth2Client.getTokenInfo(tokens.access_token)
 
-      const user_id = userInfo.email
+      if (!users[userInfo.email]) {
+        const encryptedId = encrypt(userInfo.email)
+        users[userInfo.email] = { ...tokens, encryptedId }
+        saveUsers()
+      }
 
-      users[user_id] = tokens
-      saveUsers()
+      const user_id =
+        users[userInfo.email].encryptedId.encryptedData +
+        ';' +
+        users[userInfo.email].encryptedId.iv
 
       if (!req.query.noRedirect) {
-        res.redirect(`${ORIGIN}/?user_id=${user_id}`)
+        res.redirect(
+          `${ORIGIN}/?user_id=${user_id}&user_email=${userInfo.email}`
+        )
       } else {
-        res.send(user_id)
+        res.json({ user_id, user_email: userInfo.email })
       }
     },
     err => {
@@ -95,10 +138,18 @@ app.post('/auth/google/registerTokens', async (req, res) => {
   try {
     const tokens = req.body
     const userInfo = await oauth2Client.getTokenInfo(tokens.access_token)
-    const user_id = userInfo.email
-    users[user_id] = tokens
-    saveUsers()
-    res.send(user_id)
+    if (!users[userInfo.email]) {
+      const encryptedId = encrypt(userInfo.email)
+      users[userInfo.email] = { ...tokens, encryptedId }
+      saveUsers()
+    }
+
+    const user_id =
+      users[userInfo.email].encryptedId.encryptedData +
+      ';' +
+      users[userInfo.email].encryptedId.iv
+
+    res.json({ user_id, user_email: userInfo.email })
   } catch (err) {
     res.status(400).send(err.message)
   }
@@ -106,8 +157,9 @@ app.post('/auth/google/registerTokens', async (req, res) => {
 
 app.get('/auth/google/signOut', async (req, res) => {
   try {
-    const token = users[req.query.user_id].access_token
-    delete users[req.query.user_id]
+    const userEmail = getEmailFromQuery(req)
+    const token = users[userEmail].access_token
+    delete users[userEmail]
     oauth2Client.revokeToken(token).then(
       () => {
         saveUsers()
@@ -123,9 +175,16 @@ app.get('/auth/google/signOut', async (req, res) => {
 app.post('/auth/google/requestWithId', async (req, res) => {
   try {
     const request = req.body
+    const user_email = getEmailFromQuery(req)
+    console.log('email', user_email)
+    if (!users[user_email]) {
+      res.status(401).send('user ID not registered')
+      return
+    }
+
     request.headers = {
       ...request.headers,
-      Authorization: `Bearer ${users[req.query.user_id].access_token}`
+      Authorization: `Bearer ${users[user_email].access_token}`
     }
     const result = await axios.request(request)
 
@@ -134,22 +193,28 @@ app.post('/auth/google/requestWithId', async (req, res) => {
     if (err.response && [401, 403].includes(err.response.status)) {
       try {
         // re-initialize client
+        const user_email = getEmailFromQuery(req)
 
-        oauth2Client.setCredentials(users[req.query.user_id])
+        oauth2Client.setCredentials(users[user_email])
         const { credentials } = await oauth2Client.refreshAccessToken()
-        users[req.query.user_id] = credentials
+        users[user_email] = {
+          ...credentials,
+          encryptedId: users[user_email].encryptedId
+        }
         saveUsers()
 
         const request = req.body
         request.headers = {
           ...request.headers,
-          Authorization: `Bearer ${users[req.query.user_id].access_token}`
+          Authorization: `Bearer ${users[user_email].access_token}`
         }
         const result = await axios.request(request)
 
         res.send(result.data)
       } catch (err) {
         if (err.message === 'invalid_grant') {
+          const user_email = getEmailFromQuery(req)
+          delete users[user_email]
           res.status(401).send(err.message)
         } else {
           res
