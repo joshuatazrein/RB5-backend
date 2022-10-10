@@ -107,7 +107,7 @@ app.get('/auth/access', async (req, res) => {
 
       if (!users[userInfo.email]) {
         const encryptedId = encrypt(userInfo.email)
-        users[userInfo.email] = { ...tokens, encryptedId }
+        users[userInfo.email] = { tokens, encryptedId, sharedLists: [] }
         saveUsers()
       }
 
@@ -140,7 +140,7 @@ app.post('/auth/google/registerTokens', async (req, res) => {
     const userInfo = await oauth2Client.getTokenInfo(tokens.access_token)
     if (!users[userInfo.email]) {
       const encryptedId = encrypt(userInfo.email)
-      users[userInfo.email] = { ...tokens, encryptedId }
+      users[userInfo.email] = { tokens, encryptedId, sharedLists: [] }
       saveUsers()
     }
 
@@ -155,10 +155,21 @@ app.post('/auth/google/registerTokens', async (req, res) => {
   }
 })
 
+app.get('/auth/google/addSharedList', async (req, res) => {
+  try {
+    const { user_id, list_id } = req.query
+    if (users[getEmailFromQuery(req)]) {
+    }
+  } catch (err) {
+    console.log(err)
+    res.status(400).send(err.message)
+  }
+})
+
 app.get('/auth/google/signOut', async (req, res) => {
   try {
     const userEmail = getEmailFromQuery(req)
-    const token = users[userEmail].access_token
+    const token = users[userEmail].tokens.access_token
     delete users[userEmail]
     oauth2Client.revokeToken(token).then(
       () => {
@@ -176,7 +187,6 @@ app.post('/auth/google/requestWithId', async (req, res) => {
   try {
     const request = req.body
     const user_email = getEmailFromQuery(req)
-    console.log('email', user_email)
     if (!users[user_email]) {
       res.status(401).send('user ID not registered')
       return
@@ -184,7 +194,7 @@ app.post('/auth/google/requestWithId', async (req, res) => {
 
     request.headers = {
       ...request.headers,
-      Authorization: `Bearer ${users[user_email].access_token}`
+      Authorization: `Bearer ${users[user_email].tokens.access_token}`
     }
     const result = await axios.request(request)
 
@@ -195,18 +205,18 @@ app.post('/auth/google/requestWithId', async (req, res) => {
         // re-initialize client
         const user_email = getEmailFromQuery(req)
 
-        oauth2Client.setCredentials(users[user_email])
-        const { credentials } = await oauth2Client.refreshAccessToken()
+        oauth2Client.setCredentials(users[user_email].tokens)
+        const { tokens } = await oauth2Client.refreshAccessToken()
         users[user_email] = {
-          ...credentials,
-          encryptedId: users[user_email].encryptedId
+          ...users[user_email],
+          tokens
         }
         saveUsers()
 
         const request = req.body
         request.headers = {
           ...request.headers,
-          Authorization: `Bearer ${users[user_email].access_token}`
+          Authorization: `Bearer ${users[user_email].tokens.access_token}`
         }
         const result = await axios.request(request)
 
