@@ -105,23 +105,27 @@ app.get('/auth/access', async (req, res) => {
     async ({ tokens }) => {
       const userInfo = await oauth2Client.getTokenInfo(tokens.access_token)
 
-      if (!users[userInfo.email]) {
-        const encryptedId = encrypt(userInfo.email)
-        users[userInfo.email] = { tokens, encryptedId, sharedLists: [] }
+      const user_email = userInfo.email
+
+      if (!users[user_email]) {
+        const encryptedId = encrypt(user_email)
+        users[user_email] = { tokens, encryptedId, sharedLists: [] }
         saveUsers()
       }
 
       const user_id =
-        users[userInfo.email].encryptedId.encryptedData +
+        users[user_email].encryptedId.encryptedData +
         ';' +
-        users[userInfo.email].encryptedId.iv
+        users[user_email].encryptedId.iv
 
       if (!req.query.noRedirect) {
-        res.redirect(
-          `${ORIGIN}/?user_id=${user_id}&user_email=${userInfo.email}`
-        )
+        res.redirect(`${ORIGIN}/?user_id=${user_id}&user_email=${user_email}`)
       } else {
-        res.json({ user_id, user_email: userInfo.email })
+        res.json({
+          user_id,
+          user_email: user_email,
+          sharedLists: users[user_email].sharedLists
+        })
       }
     },
     err => {
@@ -138,18 +142,23 @@ app.post('/auth/google/registerTokens', async (req, res) => {
   try {
     const tokens = req.body
     const userInfo = await oauth2Client.getTokenInfo(tokens.access_token)
-    if (!users[userInfo.email]) {
-      const encryptedId = encrypt(userInfo.email)
-      users[userInfo.email] = { tokens, encryptedId, sharedLists: [] }
+    const user_email = userInfo.email
+    if (!users[user_email]) {
+      const encryptedId = encrypt(user_email)
+      users[user_email] = { tokens, encryptedId, sharedLists: [] }
       saveUsers()
     }
 
     const user_id =
-      users[userInfo.email].encryptedId.encryptedData +
+      users[user_email].encryptedId.encryptedData +
       ';' +
-      users[userInfo.email].encryptedId.iv
+      users[user_email].encryptedId.iv
 
-    res.json({ user_id, user_email: userInfo.email })
+    res.json({
+      user_id,
+      user_email: user_email,
+      sharedLists: users[user_email].sharedLists
+    })
   } catch (err) {
     res.status(400).send(err.message)
   }
@@ -157,9 +166,39 @@ app.post('/auth/google/registerTokens', async (req, res) => {
 
 app.get('/auth/google/addSharedList', async (req, res) => {
   try {
-    const { user_id, list_id } = req.query
-    if (users[getEmailFromQuery(req)]) {
+    const { list_id } = req.query
+    const user_email = getEmailFromQuery(req)
+    if (!users[user_email]) {
+      res.status(401).send('NO_USER')
+      return
     }
+    if (!users[user_email].sharedLists.includes(list_id)) {
+      users[user_email].sharedLists.push(list_id)
+      saveUsers()
+    }
+    res.json(users[user_email].sharedLists)
+  } catch (err) {
+    console.log(err)
+    res.status(400).send(err.message)
+  }
+})
+
+app.get('/auth/google/removeSharedList', async (req, res) => {
+  try {
+    const { list_id } = req.query
+    const user_email = getEmailFromQuery(req)
+    if (!users[user_email]) {
+      res.status(401).send('NO_USER')
+      return
+    }
+    if (users[user_email].sharedLists.includes(list_id)) {
+      users[user_email].sharedLists.splice(
+        users[user_email].sharedLists.indexOf(list_id),
+        1
+      )
+      saveUsers()
+    }
+    res.json(users[user_email].sharedLists)
   } catch (err) {
     console.log(err)
     res.status(400).send(err.message)
@@ -168,9 +207,9 @@ app.get('/auth/google/addSharedList', async (req, res) => {
 
 app.get('/auth/google/signOut', async (req, res) => {
   try {
-    const userEmail = getEmailFromQuery(req)
-    const token = users[userEmail].tokens.access_token
-    delete users[userEmail]
+    const user_email = getEmailFromQuery(req)
+    const token = users[user_email].tokens.access_token
+    delete users[user_email]
     oauth2Client.revokeToken(token).then(
       () => {
         saveUsers()
@@ -183,12 +222,33 @@ app.get('/auth/google/signOut', async (req, res) => {
   }
 })
 
+const message = message => {
+  console.log(message)
+}
+
 app.post('/auth/google/requestWithId', async (req, res) => {
+  let user_email
+  const request = req.body
   try {
-    const request = req.body
-    const user_email = getEmailFromQuery(req)
+    if (request.url && /\/[^@\/]+@\w+\.\w+:\w+\//.test(request.url)) {
+      // it's a shared list, so use a different credential (mutates request itself)
+      const listId = request.url
+        .match(/\/[^@\/]+@\w+\.\w+:\w+\//)[0]
+        .slice(1, -1)
+      request.url = request.url.replace(listId, listId.split(':')[1])
+      user_email = listId.split(':')[0]
+    } else {
+      user_email = getEmailFromQuery(req)
+    }
+  } catch (err) {
+    message(err.message)
+    res.status(400).send(err.message)
+    return
+  }
+
+  try {
     if (!users[user_email]) {
-      res.status(401).send('user ID not registered')
+      res.status(401).send('NO_USER')
       return
     }
 
@@ -198,13 +258,41 @@ app.post('/auth/google/requestWithId', async (req, res) => {
     }
     const result = await axios.request(request)
 
+    if (
+      request.url === 'https://tasks.googleapis.com/tasks/v1/users/@me/lists'
+    ) {
+      // adds in shared tasklists from RiverBank when listing task lists
+      const mySharedLists = [...users[user_email].sharedLists]
+      for (let sharedListId of mySharedLists) {
+        const sharedUserEmail = sharedListId.split(':')[0]
+        const listId = sharedListId.split(':')[1]
+
+        const sharedRequest = {
+          method: 'GET',
+          url: `https://tasks.googleapis.com/tasks/v1/users/@me/lists/${listId}`,
+          headers: {
+            Authorization: `Bearer ${users[sharedUserEmail].tokens.access_token}`
+          }
+        }
+        try {
+          const sharedList = (await axios.request(sharedRequest)).data
+          sharedList.id = sharedListId
+          result.data.items.push(sharedList)
+        } catch (err) {
+          message(err.message)
+          users[user_email].sharedLists.splice(
+            users[user_email].sharedLists.indexOf(sharedListId),
+            1
+          )
+        }
+      }
+    }
+
     res.send(result.data)
   } catch (err) {
+    message(err.message + '\nData recieved: ' + JSON.stringify(req.body))
     if (err.response && [401, 403].includes(err.response.status)) {
       try {
-        // re-initialize client
-        const user_email = getEmailFromQuery(req)
-
         oauth2Client.setCredentials(users[user_email].tokens)
         const { tokens } = await oauth2Client.refreshAccessToken()
         users[user_email] = {
@@ -213,7 +301,6 @@ app.post('/auth/google/requestWithId', async (req, res) => {
         }
         saveUsers()
 
-        const request = req.body
         request.headers = {
           ...request.headers,
           Authorization: `Bearer ${users[user_email].tokens.access_token}`
@@ -222,10 +309,10 @@ app.post('/auth/google/requestWithId', async (req, res) => {
 
         res.send(result.data)
       } catch (err) {
+        message(err.message)
         if (err.message === 'invalid_grant') {
-          const user_email = getEmailFromQuery(req)
           delete users[user_email]
-          res.status(401).send(err.message)
+          res.status(401).send('NO_USER')
         } else {
           res
             .status(400)
