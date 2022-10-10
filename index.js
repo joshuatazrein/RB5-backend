@@ -169,7 +169,7 @@ app.get('/auth/google/addSharedList', async (req, res) => {
     const { list_id } = req.query
     const user_email = getEmailFromQuery(req)
     if (!users[user_email]) {
-      res.send('NO_USER')
+      res.status(401).send('NO_USER')
       return
     }
     if (!users[user_email].sharedLists.includes(list_id)) {
@@ -188,7 +188,7 @@ app.get('/auth/google/removeSharedList', async (req, res) => {
     const { list_id } = req.query
     const user_email = getEmailFromQuery(req)
     if (!users[user_email]) {
-      res.send('NO_USER')
+      res.status(401).send('NO_USER')
       return
     }
     if (users[user_email].sharedLists.includes(list_id)) {
@@ -248,7 +248,7 @@ app.post('/auth/google/requestWithId', async (req, res) => {
 
   try {
     if (!users[user_email]) {
-      res.send('NO_USER')
+      res.status(401).send('NO_USER')
       return
     }
 
@@ -295,7 +295,6 @@ app.post('/auth/google/requestWithId', async (req, res) => {
       try {
         oauth2Client.setCredentials(users[user_email].tokens)
         const { tokens } = await oauth2Client.refreshAccessToken()
-        if (!tokens) throw new Error('token refresh failed?')
         users[user_email] = {
           ...users[user_email],
           tokens
@@ -313,7 +312,7 @@ app.post('/auth/google/requestWithId', async (req, res) => {
         message(err.message)
         if (err.message === 'invalid_grant') {
           delete users[user_email]
-          res.send('NO_USER')
+          res.status(401).send('NO_USER')
         } else {
           res
             .status(400)
