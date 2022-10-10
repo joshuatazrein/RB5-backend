@@ -158,7 +158,6 @@ app.post('/auth/google/requestWithId', async (req, res) => {
         }
       }
     } else {
-      console.log('Bad request:', err)
       res
         .status(400)
         .send(err.message + '\nData recieved: ' + JSON.stringify(req.body))
