@@ -237,6 +237,17 @@ app.post('/auth/google/requestWithId', async (req, res) => {
         .slice(1, -1)
       request.url = request.url.replace(listId, listId.split(':')[1])
       user_email = listId.split(':')[0]
+      console.log('RECEIVED SHARED REQUEST:', listId, request)
+    } else if (
+      request.params &&
+      request.params.tasklist &&
+      request.params.tasklist.includes(':')
+    ) {
+      // tasklist in params, use different credential
+      const listId = request.params.tasklist
+      request.params.tasklist = listId.split(':')[1]
+      user_email = listId.split(':')[0]
+      console.log('RECEIVED SHARED REQUEST:', listId, request)
     } else {
       user_email = getEmailFromQuery(req)
     }
@@ -262,6 +273,7 @@ app.post('/auth/google/requestWithId', async (req, res) => {
       request.url === 'https://tasks.googleapis.com/tasks/v1/users/@me/lists'
     ) {
       // adds in shared tasklists from RiverBank when listing task lists
+      console.log('getting shared lists')
       const mySharedLists = [...users[user_email].sharedLists]
       for (let sharedListId of mySharedLists) {
         const sharedUserEmail = sharedListId.split(':')[0]
@@ -275,11 +287,35 @@ app.post('/auth/google/requestWithId', async (req, res) => {
           }
         }
         try {
-          const sharedList = (await axios.request(sharedRequest)).data
-          sharedList.id = sharedListId
-          result.data.items.push(sharedList)
+          let sharedList
+          try {
+            sharedList = (await axios.request(sharedRequest)).data
+            sharedList.id = sharedListId
+            result.data.items.push(sharedList)
+          } catch (err) {
+            if (err.response && [401, 403].includes(err.response.status)) {
+              console.log('expired access token, refreshing')
+              oauth2Client.setCredentials(users[sharedUserEmail].tokens)
+              const { credentials: tokens } =
+                await oauth2Client.refreshAccessToken()
+              console.log('refreshed tokens')
+              if (!tokens) throw new Error("tokens didn't work")
+              users[sharedUserEmail] = {
+                ...users[sharedUserEmail],
+                tokens
+              }
+              saveUsers()
+              sharedRequest.headers = {
+                ...sharedRequest.headers,
+                Authorization: `Bearer ${users[sharedUserEmail].tokens.access_token}`
+              }
+              sharedList = await axios.request(sharedRequest)
+              sharedList.id = sharedListId
+              result.data.items.push(sharedList)
+            }
+          }
         } catch (err) {
-          message(err.message)
+          message('shared lists failed', err.message)
           users[user_email].sharedLists.splice(
             users[user_email].sharedLists.indexOf(sharedListId),
             1
@@ -294,7 +330,9 @@ app.post('/auth/google/requestWithId', async (req, res) => {
     if (err.response && [401, 403].includes(err.response.status)) {
       try {
         oauth2Client.setCredentials(users[user_email].tokens)
-        const { tokens } = await oauth2Client.refreshAccessToken()
+        const { credentials: tokens } = await oauth2Client.refreshAccessToken()
+        console.log(tokens)
+        if (!tokens) throw new Error("tokens didn't work")
         users[user_email] = {
           ...users[user_email],
           tokens
