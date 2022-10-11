@@ -252,27 +252,34 @@ const message = message => {
 app.post('/auth/google/requestWithId', async (req, res) => {
   let user_email
   const request = req.body
-  console.log('--- NEW REQUEST ---')
-  console.log(request)
+  // console.log('--- NEW REQUEST ---')
+  // console.log(request)
   try {
-    if (request.url && /\/[^@\/]+@\w+\.\w+:\w+\//.test(request.url)) {
-      // it's a shared list, so use a different credential (mutates request itself)
-      const listId = request.url
-        .match(/\/[^@\/]+@\w+\.\w+:\w+\//)[0]
-        .slice(1, -1)
-      request.url = request.url.replace(listId, listId.split(':')[1])
-      user_email = listId.split(':')[0]
-      console.log('RECEIVED SHARED REQUEST:', listId, request)
-    } else if (
-      request.params &&
-      request.params.tasklist &&
-      request.params.tasklist.includes(':')
+    if (
+      (request.url && /\/[^@\/]+@\w+\.\w+:\w+\/*/.test(request.url)) ||
+      (request.params &&
+        request.params.tasklist &&
+        request.params.tasklist.includes(':'))
     ) {
-      // tasklist in params, use different credential
-      const listId = request.params.tasklist
-      request.params.tasklist = listId.split(':')[1]
-      user_email = listId.split(':')[0]
-      console.log('RECEIVED SHARED REQUEST:', listId, request)
+      let splitId
+      if (request.url && /\/[^@\/]+@\w+\.\w+:\w+\/*/.test(request.url)) {
+        // it's a shared list, so use a different credential (mutates request itself)
+        splitId = request.url
+          .match(/\/[^@\/]+@\w+\.\w+:\w+\/*/)[0]
+          .slice(1, -1)
+          .split(':')
+        request.url = request.url.replace(splitId.join(':'), splitId[1])
+      }
+      if (
+        request.params &&
+        request.params.tasklist &&
+        request.params.tasklist.includes(':')
+      ) {
+        splitId = request.params.tasklist.split(':')
+        request.params.tasklist = splitId[1]
+      }
+      user_email = splitId[0]
+      console.log('RECEIVED SHARED REQUEST:', splitId, request)
     } else {
       user_email = getEmailFromQuery(req)
     }
@@ -292,6 +299,8 @@ app.post('/auth/google/requestWithId', async (req, res) => {
       ...request.headers,
       Authorization: `Bearer ${users[user_email].tokens.access_token}`
     }
+
+    const result = await axios.request(request)
 
     if (
       request.url === 'https://tasks.googleapis.com/tasks/v1/users/@me/lists'
@@ -325,7 +334,7 @@ app.post('/auth/google/requestWithId', async (req, res) => {
           sharedList.id = sharedListId
           result.data.items.push(sharedList)
         } catch (err) {
-          message('failed')
+          console.log('failed: ', err.message)
           if (err.response && [401, 403].includes(err.response.status)) {
             message('refreshing token')
             const newTokens = await refreshTokens(sharedUserEmail)
@@ -349,10 +358,8 @@ app.post('/auth/google/requestWithId', async (req, res) => {
       }
     }
 
-    const result = await axios.request(request)
     res.send(result.data)
   } catch (err) {
-    message(err.message + '\nData recieved: ' + JSON.stringify(req.body))
     if (err.response && [401, 403].includes(err.response.status)) {
       // refresh tokens
       const newTokens = await refreshTokens(user_email)
@@ -365,14 +372,17 @@ app.post('/auth/google/requestWithId', async (req, res) => {
           const result = await axios.request(request)
           res.send(result.data)
         } catch (err) {
+          message(err.message + '\nData recieved: ' + JSON.stringify(req.body))
           res
             .status(400)
             .send(err.message + '\nData recieved: ' + JSON.stringify(req.body))
         }
       } else {
+        message(err.message + '\nData recieved: ' + JSON.stringify(req.body))
         res.status(401).send(newTokens.error)
       }
     } else {
+      message(err.message + '\nData recieved: ' + JSON.stringify(req.body))
       res
         .status(400)
         .send(err.message + '\nData recieved: ' + JSON.stringify(req.body))
