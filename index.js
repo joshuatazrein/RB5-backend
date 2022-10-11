@@ -25,6 +25,7 @@ const port = process.env.PORT || 3001
 const { getUser } = require('@notionhq/client/build/src/api-endpoints')
 
 const crypto = require('crypto')
+const { oauth2 } = require('googleapis/build/src/apis/oauth2')
 const key = Buffer.from(keys.cipher.key)
 
 function encrypt(text) {
@@ -65,29 +66,6 @@ const oauth2Client = new OAuth2(
 
 const saveUsers = () =>
   fs.writeFile('./users.json', JSON.stringify(users), () => {})
-
-const refreshTokens = async user_email => {
-  try {
-    if (!users[user_email]) throw new Error('invalid_grant')
-    oauth2Client.setCredentials(users[user_email].tokens)
-    const { credentials: tokens } = await oauth2Client.refreshAccessToken()
-    users[user_email] = {
-      ...users[user_email],
-      tokens
-    }
-    saveUsers()
-    return tokens
-  } catch (err) {
-    message('refresh failed, ' + err.message)
-    if (err.message === 'invalid_grant') {
-      delete users[user_email]
-      saveUsers()
-      return { error: 'NO_USER' }
-    } else {
-      return { error: err.message }
-    }
-  }
-}
 
 app.use('/auth/google/request', express.json())
 app.use('/auth/google/requestWithId', express.json({ limit: '50mb' }))
@@ -201,7 +179,6 @@ app.get('/auth/google/addSharedList', async (req, res) => {
     }
     res.json(users[user_email].sharedLists)
   } catch (err) {
-    console.log(err)
     res.status(400).send(err.message)
   }
 })
@@ -223,7 +200,6 @@ app.get('/auth/google/removeSharedList', async (req, res) => {
     }
     res.json(users[user_email].sharedLists)
   } catch (err) {
-    console.log(err)
     res.status(400).send(err.message)
   }
 })
@@ -249,12 +225,25 @@ const message = message => {
   console.log(message)
 }
 
+const makeRequest = async (user_email, request) => {
+  if (!users[user_email]) throw new Error('NO_USER')
+  oauth2Client.setCredentials(users[user_email].tokens)
+  const initialCredentials = { ...oauth2Client.credentials }
+  const result = await oauth2Client.request(request)
+  if (
+    oauth2Client.credentials.access_token !== initialCredentials.access_token
+  ) {
+    users[user_email].tokens = { ...oauth2Client.credentials }
+    saveUsers()
+  }
+  return result
+}
+
 app.post('/auth/google/requestWithId', async (req, res) => {
-  let user_email
-  const request = req.body
-  // console.log('--- NEW REQUEST ---')
-  // console.log(request)
   try {
+    let user_email
+    const request = req.body
+
     if (
       (request.url && /\/[^@\/]+@\w+\.\w+:\w+\/*/.test(request.url)) ||
       (request.params &&
@@ -279,35 +268,16 @@ app.post('/auth/google/requestWithId', async (req, res) => {
         request.params.tasklist = splitId[1]
       }
       user_email = splitId[0]
-      console.log('RECEIVED SHARED REQUEST:', splitId, request)
     } else {
       user_email = getEmailFromQuery(req)
     }
-  } catch (err) {
-    message(err.message)
-    res.status(400).send(err.message)
-    return
-  }
-
-  try {
-    if (!users[user_email]) {
-      res.status(401).send('NO_USER')
-      return
-    }
-
-    request.headers = {
-      ...request.headers,
-      Authorization: `Bearer ${users[user_email].tokens.access_token}`
-    }
-
-    const result = await axios.request(request)
+    const result = await makeRequest(user_email, request)
 
     if (
       request.url === 'https://tasks.googleapis.com/tasks/v1/users/@me/lists'
     ) {
       // adds in shared tasklists from RiverBank when listing task lists
       const mySharedLists = [...users[user_email].sharedLists]
-      console.log('getting shared lists', mySharedLists)
       for (let sharedListId of mySharedLists) {
         const sharedUserEmail = sharedListId.split(':')[0]
         const listId = sharedListId.split(':')[1]
@@ -324,68 +294,24 @@ app.post('/auth/google/requestWithId', async (req, res) => {
         let sharedList
         const sharedRequest = {
           method: 'GET',
-          url: `https://tasks.googleapis.com/tasks/v1/users/@me/lists/${listId}`,
-          headers: {
-            Authorization: `Bearer ${users[sharedUserEmail].tokens.access_token}`
-          }
+          url: `https://tasks.googleapis.com/tasks/v1/users/@me/lists/${listId}`
         }
+
         try {
-          sharedList = (await axios.request(sharedRequest)).data
+          sharedList = (await makeRequest(sharedUserEmail, sharedRequest)).data
           sharedList.id = sharedListId
           result.data.items.push(sharedList)
         } catch (err) {
-          console.log('failed: ', err.message)
-          if (err.response && [401, 403].includes(err.response.status)) {
-            message('refreshing token')
-            const newTokens = await refreshTokens(sharedUserEmail)
-            if (newTokens.access_token) {
-              sharedRequest.headers = {
-                ...sharedRequest.headers,
-                Authorization: `Bearer ${newTokens.access_token}`
-              }
-              sharedList = await axios.request(sharedRequest)
-              sharedList.id = sharedListId
-              result.data.items.push(sharedList)
-            } else {
-              message('failed, deleting list')
-              users[user_email].sharedLists.splice(
-                users[user_email].sharedLists.indexOf(sharedListId),
-                1
-              )
-            }
-          }
+          message('failed: ' + err.message)
         }
       }
     }
-
     res.send(result.data)
   } catch (err) {
-    if (err.response && [401, 403].includes(err.response.status)) {
-      // refresh tokens
-      const newTokens = await refreshTokens(user_email)
-      if (newTokens.access_token) {
-        req.headers = {
-          ...req.headers,
-          Authorization: `Bearer ${newTokens.access_token}`
-        }
-        try {
-          const result = await axios.request(request)
-          res.send(result.data)
-        } catch (err) {
-          message(err.message + '\nData recieved: ' + JSON.stringify(req.body))
-          res
-            .status(400)
-            .send(err.message + '\nData recieved: ' + JSON.stringify(req.body))
-        }
-      } else {
-        message(err.message + '\nData recieved: ' + JSON.stringify(req.body))
-        res.status(401).send(newTokens.error)
-      }
-    } else {
-      message(err.message + '\nData recieved: ' + JSON.stringify(req.body))
-      res
-        .status(400)
-        .send(err.message + '\nData recieved: ' + JSON.stringify(req.body))
+    console.log('failed:', err.message)
+    if (err.message === 'NO_USER') res.status(403).send(err.message)
+    else {
+      res.status(400).send(err.message)
     }
   }
 })
