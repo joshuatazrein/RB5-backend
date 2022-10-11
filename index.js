@@ -66,6 +66,29 @@ const oauth2Client = new OAuth2(
 const saveUsers = () =>
   fs.writeFile('./users.json', JSON.stringify(users), () => {})
 
+const refreshTokens = async user_email => {
+  try {
+    if (!users[user_email]) throw new Error('invalid_grant')
+    oauth2Client.setCredentials(users[user_email].tokens)
+    const { credentials: tokens } = await oauth2Client.refreshAccessToken()
+    users[user_email] = {
+      ...users[user_email],
+      tokens
+    }
+    saveUsers()
+    return tokens
+  } catch (err) {
+    message('refresh failed, ' + err.message)
+    if (err.message === 'invalid_grant') {
+      delete users[user_email]
+      saveUsers()
+      return { error: 'NO_USER' }
+    } else {
+      return { error: err.message }
+    }
+  }
+}
+
 app.use('/auth/google/request', express.json())
 app.use('/auth/google/requestWithId', express.json({ limit: '50mb' }))
 app.use('/auth/google/registerId', express.json())
@@ -229,6 +252,8 @@ const message = message => {
 app.post('/auth/google/requestWithId', async (req, res) => {
   let user_email
   const request = req.body
+  console.log('--- NEW REQUEST ---')
+  console.log(request)
   try {
     if (request.url && /\/[^@\/]+@\w+\.\w+:\w+\//.test(request.url)) {
       // it's a shared list, so use a different credential (mutates request itself)
@@ -267,18 +292,27 @@ app.post('/auth/google/requestWithId', async (req, res) => {
       ...request.headers,
       Authorization: `Bearer ${users[user_email].tokens.access_token}`
     }
-    const result = await axios.request(request)
 
     if (
       request.url === 'https://tasks.googleapis.com/tasks/v1/users/@me/lists'
     ) {
       // adds in shared tasklists from RiverBank when listing task lists
-      console.log('getting shared lists')
       const mySharedLists = [...users[user_email].sharedLists]
+      console.log('getting shared lists', mySharedLists)
       for (let sharedListId of mySharedLists) {
         const sharedUserEmail = sharedListId.split(':')[0]
         const listId = sharedListId.split(':')[1]
 
+        if (!users[sharedUserEmail]) {
+          message('NO_USER, deleting list')
+          users[user_email].sharedLists.splice(
+            users[user_email].sharedLists.indexOf(sharedListId),
+            1
+          )
+          continue
+        }
+
+        let sharedList
         const sharedRequest = {
           method: 'GET',
           url: `https://tasks.googleapis.com/tasks/v1/users/@me/lists/${listId}`,
@@ -287,75 +321,56 @@ app.post('/auth/google/requestWithId', async (req, res) => {
           }
         }
         try {
-          let sharedList
-          try {
-            sharedList = (await axios.request(sharedRequest)).data
-            sharedList.id = sharedListId
-            result.data.items.push(sharedList)
-          } catch (err) {
-            if (err.response && [401, 403].includes(err.response.status)) {
-              console.log('expired access token, refreshing')
-              oauth2Client.setCredentials(users[sharedUserEmail].tokens)
-              const { credentials: tokens } =
-                await oauth2Client.refreshAccessToken()
-              console.log('refreshed tokens')
-              if (!tokens) throw new Error("tokens didn't work")
-              users[sharedUserEmail] = {
-                ...users[sharedUserEmail],
-                tokens
-              }
-              saveUsers()
+          sharedList = (await axios.request(sharedRequest)).data
+          sharedList.id = sharedListId
+          result.data.items.push(sharedList)
+        } catch (err) {
+          message('failed')
+          if (err.response && [401, 403].includes(err.response.status)) {
+            message('refreshing token')
+            const newTokens = await refreshTokens(sharedUserEmail)
+            if (newTokens.access_token) {
               sharedRequest.headers = {
                 ...sharedRequest.headers,
-                Authorization: `Bearer ${users[sharedUserEmail].tokens.access_token}`
+                Authorization: `Bearer ${newTokens.access_token}`
               }
               sharedList = await axios.request(sharedRequest)
               sharedList.id = sharedListId
               result.data.items.push(sharedList)
+            } else {
+              message('failed, deleting list')
+              users[user_email].sharedLists.splice(
+                users[user_email].sharedLists.indexOf(sharedListId),
+                1
+              )
             }
           }
-        } catch (err) {
-          message('shared lists failed', err.message)
-          users[user_email].sharedLists.splice(
-            users[user_email].sharedLists.indexOf(sharedListId),
-            1
-          )
         }
       }
     }
 
+    const result = await axios.request(request)
     res.send(result.data)
   } catch (err) {
     message(err.message + '\nData recieved: ' + JSON.stringify(req.body))
     if (err.response && [401, 403].includes(err.response.status)) {
-      try {
-        oauth2Client.setCredentials(users[user_email].tokens)
-        const { credentials: tokens } = await oauth2Client.refreshAccessToken()
-        console.log(tokens)
-        if (!tokens) throw new Error("tokens didn't work")
-        users[user_email] = {
-          ...users[user_email],
-          tokens
+      // refresh tokens
+      const newTokens = await refreshTokens(user_email)
+      if (newTokens.access_token) {
+        req.headers = {
+          ...req.headers,
+          Authorization: `Bearer ${newTokens.access_token}`
         }
-        saveUsers()
-
-        request.headers = {
-          ...request.headers,
-          Authorization: `Bearer ${users[user_email].tokens.access_token}`
-        }
-        const result = await axios.request(request)
-
-        res.send(result.data)
-      } catch (err) {
-        message(err.message)
-        if (err.message === 'invalid_grant') {
-          delete users[user_email]
-          res.status(401).send('NO_USER')
-        } else {
+        try {
+          const result = await axios.request(request)
+          res.send(result.data)
+        } catch (err) {
           res
             .status(400)
             .send(err.message + '\nData recieved: ' + JSON.stringify(req.body))
         }
+      } else {
+        res.status(401).send(newTokens.error)
       }
     } else {
       res
