@@ -9,6 +9,7 @@ const keys = require('./keys.json')
 const axios = require('axios')
 const users = require('./users.json')
 const fs = require('fs')
+const { Client: Notion, collectPaginatedAPI } = require('@notionhq/client')
 
 const {
   google: {
@@ -18,7 +19,6 @@ const {
 
 const express = require('express')
 const cors = require('cors')
-const { signInMyNotion } = require('./notionApi')
 const app = express()
 const port = process.env.PORT || 3001
 
@@ -71,6 +71,7 @@ app.use('/auth/google/request', express.json())
 app.use('/auth/google/requestWithId', express.json({ limit: '50mb' }))
 app.use('/auth/google/registerId', express.json())
 app.use('/auth/google/registerTokens', express.json())
+app.use('/auth/notion/getDatabases', express.json())
 
 var allowedDomains = [
   'capacitor://localhost',
@@ -92,9 +93,25 @@ app.use(
   })
 )
 
-app.get('/auth/notion/signIn', async (req, res) => {
+app.post('/auth/notion/getDatabases', async (req, res) => {
   try {
-    res.json(await signInMyNotion())
+    const { databaseKey, databaseIds } = req.body
+    const notion = new Notion({
+      auth: databaseKey
+    })
+    const databases = []
+    for (let database_id of databaseIds) {
+      const rawDatabase = await notion.databases.retrieve({
+        database_id
+      })
+
+      const rawContent = await collectPaginatedAPI(notion.databases.query, {
+        database_id
+      })
+
+      databases.push({ rawDatabase, rawContent })
+    }
+    res.send(databases)
   } catch (err) {
     res.status(400).send(err.message)
   }
