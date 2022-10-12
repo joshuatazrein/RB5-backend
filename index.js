@@ -93,30 +93,6 @@ app.use(
   })
 )
 
-app.post('/auth/notion/getDatabases', async (req, res) => {
-  try {
-    const { databaseKey, databaseIds } = req.body
-    const notion = new Notion({
-      auth: databaseKey
-    })
-    const databases = []
-    for (let database_id of databaseIds) {
-      const rawDatabase = await notion.databases.retrieve({
-        database_id
-      })
-
-      const rawContent = await collectPaginatedAPI(notion.databases.query, {
-        database_id
-      })
-
-      databases.push({ rawDatabase, rawContent })
-    }
-    res.send(databases)
-  } catch (err) {
-    res.status(400).send(err.message)
-  }
-})
-
 // for browser-based registration (server holds codes)
 app.get('/auth/access', async (req, res) => {
   oauth2Client.getToken(req.query.code).then(
@@ -330,6 +306,60 @@ app.post('/auth/google/requestWithId', async (req, res) => {
     else {
       res.status(400).send(err.message)
     }
+  }
+})
+
+app.post('/auth/notion/getDatabases', async (req, res) => {
+  try {
+    const { databaseKey, databaseIds } = req.body
+    const notion = new Notion({
+      auth: databaseKey
+    })
+    const databases = []
+    for (let database_id of databaseIds) {
+      const rawDatabase = await notion.databases.retrieve({
+        database_id
+      })
+
+      const rawContent = await collectPaginatedAPI(notion.databases.query, {
+        database_id
+      })
+
+      databases.push({ rawDatabase, rawContent })
+    }
+    res.send(databases)
+  } catch (err) {
+    res.status(400).send(err.message)
+  }
+})
+
+app.get('/auth/ynab/getBudget', async (req, res) => {
+  try {
+    const access_token = req.query.access_token
+    const budgetInfo = (
+      await axios.request({
+        url: 'https://api.youneedabudget.com/v1/budgets',
+        headers: {
+          Authorization: `bearer ${access_token}`
+        }
+      })
+    ).data.data.budgets.sort((budgetA, budgetB) =>
+      budgetA.last_modified_on > budgetB.last_modified_on ? -1 : 1
+    )[0]
+
+    const budget = (
+      await axios.request({
+        url: `https://api.youneedabudget.com/v1/budgets/${budgetInfo.id}`,
+        headers: {
+          Authorization: `bearer ${access_token}`
+        }
+      })
+    ).data.data.budget
+
+    res.send(budget)
+  } catch (err) {
+    console.log(err)
+    res.status(400).send(err.message)
   }
 })
 
