@@ -389,13 +389,14 @@ app.post('/auth/ynab/setTransaction', async (req, res) => {
   try {
     const access_token = req.query.access_token
     const transaction = req.body
-    console.log('request:', transaction, req.query.budget_id)
-    await axios.request({
+    const response = await axios.request({
       method: 'PUT',
       url: `https://api.youneedabudget.com/v1/budgets/${req.query.budget_id}/transactions/${transaction.id}`,
       headers: { Authorization: `bearer ${access_token}` },
       data: { transaction: transaction }
     })
+    console.log(response.headers, response.data)
+    res.send('success')
   } catch (err) {
     console.log(err.message)
     res.status(400).send(err.message)
@@ -406,12 +407,14 @@ app.post('/auth/ynab/setTransactions', async (req, res) => {
   try {
     const access_token = req.query.access_token
     const transactions = req.body
-    await axios.request({
+    const response = await axios.request({
       method: 'PATCH',
       url: `https://api.youneedabudget.com/v1/budgets/${req.query.budget_id}/transactions`,
       headers: { Authorization: `bearer ${access_token}` },
       data: { transactions: transactions }
     })
+    console.log(response.data)
+    res.send('success')
   } catch (err) {
     console.log(err.message)
     res.status(400).send(err.message)
