@@ -72,6 +72,7 @@ app.use('/auth/google/requestWithId', express.json({ limit: '50mb' }))
 app.use('/auth/google/registerId', express.json())
 app.use('/auth/google/registerTokens', express.json())
 app.use('/auth/notion/getDatabases', express.json())
+app.use('/auth/ynab/setTransaction', express.json())
 
 var allowedDomains = [
   'capacitor://localhost',
@@ -356,9 +357,46 @@ app.get('/auth/ynab/getBudget', async (req, res) => {
       })
     ).data.data.budget
 
+    const transactions = (
+      await axios.request({
+        url: `https://api.youneedabudget.com/v1/budgets/${budgetInfo.id}/transactions`,
+        headers: {
+          Authorization: `bearer ${access_token}`
+        }
+      })
+    ).data.data.transactions
+
+    budget.transactions = transactions
+    budget.categories = budget.categories.filter(
+      category => !category.hidden && !category.deleted
+    )
+    budget.category_groups = budget.category_groups.filter(
+      group =>
+        !group.hidden &&
+        !group.deleted &&
+        !['Hidden Categories', 'Internal Master Category'].includes(group.name)
+    )
+
     res.send(budget)
   } catch (err) {
-    console.log(err)
+    console.log(err.message)
+    res.status(400).send(err.message)
+  }
+})
+
+app.post('/auth/ynab/setTransaction', async (req, res) => {
+  try {
+    const access_token = req.query.access_token
+    const transaction = req.body
+    console.log('request:', transaction, req.query.budget_id)
+    await axios.request({
+      method: 'PUT',
+      url: `https://api.youneedabudget.com/v1/budgets/${req.query.budget_id}/transactions/${transaction.id}`,
+      headers: { Authorization: `bearer ${access_token}` },
+      data: { transaction: transaction }
+    })
+  } catch (err) {
+    console.log(err.message)
     res.status(400).send(err.message)
   }
 })
