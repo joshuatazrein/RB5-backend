@@ -73,6 +73,7 @@ app.use('/auth/google/registerId', express.json())
 app.use('/auth/google/registerTokens', express.json())
 app.use('/auth/notion/getDatabases', express.json())
 app.use('/auth/ynab/setTransaction', express.json())
+app.use('/auth/ynab/setTransactions', express.json())
 
 var allowedDomains = [
   'capacitor://localhost',
@@ -394,6 +395,22 @@ app.post('/auth/ynab/setTransaction', async (req, res) => {
       url: `https://api.youneedabudget.com/v1/budgets/${req.query.budget_id}/transactions/${transaction.id}`,
       headers: { Authorization: `bearer ${access_token}` },
       data: { transaction: transaction }
+    })
+  } catch (err) {
+    console.log(err.message)
+    res.status(400).send(err.message)
+  }
+})
+
+app.post('/auth/ynab/setTransactions', async (req, res) => {
+  try {
+    const access_token = req.query.access_token
+    const transactions = req.body
+    await axios.request({
+      method: 'PATCH',
+      url: `https://api.youneedabudget.com/v1/budgets/${req.query.budget_id}/transactions`,
+      headers: { Authorization: `bearer ${access_token}` },
+      data: { transactions: transactions }
     })
   } catch (err) {
     console.log(err.message)
