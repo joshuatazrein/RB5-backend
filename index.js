@@ -115,12 +115,15 @@ app.get('/auth/access', async (req, res) => {
         users[user_email].encryptedId.iv
 
       if (!req.query.noRedirect) {
-        res.redirect(`${ORIGIN}/?user_id=${user_id}&user_email=${user_email}`)
+        res.redirect(
+          `${ORIGIN}/?user_id=${user_id}&user_email=${user_email}&scope=${users[user_email].tokens.scope}`
+        )
       } else {
         res.json({
           user_id,
           user_email: user_email,
-          sharedLists: users[user_email].sharedLists
+          sharedLists: users[user_email].sharedLists,
+          scope: users[user_email].tokens.scope
         })
       }
     },
@@ -153,7 +156,8 @@ app.post('/auth/google/registerTokens', async (req, res) => {
     res.json({
       user_id,
       user_email: user_email,
-      sharedLists: users[user_email].sharedLists
+      sharedLists: users[user_email].sharedLists,
+      scope: users[user_email].tokens.scope
     })
   } catch (err) {
     res.status(400).send(err.message)
@@ -303,7 +307,7 @@ app.post('/auth/google/requestWithId', async (req, res) => {
     }
     res.send(result.data)
   } catch (err) {
-    console.log('failed:', err.message)
+    console.log('failed:', err.message, err)
     if (err.message === 'NO_USER') res.status(403).send(err.message)
     else {
       res.status(400).send(err.message)
