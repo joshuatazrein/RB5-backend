@@ -227,9 +227,7 @@ app.get('/auth/google/signOut', async (req, res) => {
   }
 })
 
-const message = message => {
-  console.log(message)
-}
+const message = message => {}
 
 const makeRequest = async (user_email, request) => {
   if (!users[user_email]) throw new Error('NO_USER')
@@ -253,7 +251,6 @@ app.post('/auth/google/actionWithId', async (req, res) => {
 
     const options = req.body
     let action
-    console.log('new action:', req.body, req.query)
     switch (req.query.type) {
       case 'email.messages.send':
         action = () => gmail.users.messages.send(options)
@@ -274,7 +271,6 @@ app.post('/auth/google/actionWithId', async (req, res) => {
         }
       },
       err => {
-        console.log(err.message)
         res.status(400).send(err.message)
       }
     )
@@ -352,7 +348,6 @@ app.post('/auth/google/requestWithId', async (req, res) => {
     }
     res.send(result.data)
   } catch (err) {
-    console.log('failed:', err.message, err)
     if (err.message === 'NO_USER') res.status(403).send(err.message)
     else {
       res.status(400).send(err.message)
@@ -429,7 +424,6 @@ app.get('/auth/ynab/getBudget', async (req, res) => {
 
     res.send(budget)
   } catch (err) {
-    console.log(err.message)
     res.status(400).send(err.message)
   }
 })
@@ -444,10 +438,8 @@ app.post('/auth/ynab/setTransaction', async (req, res) => {
       headers: { Authorization: `bearer ${access_token}` },
       data: { transaction: transaction }
     })
-    console.log(response.headers, response.data)
     res.send('success')
   } catch (err) {
-    console.log(err.message)
     res.status(400).send(err.message)
   }
 })
@@ -462,10 +454,8 @@ app.post('/auth/ynab/setTransactions', async (req, res) => {
       headers: { Authorization: `bearer ${access_token}` },
       data: { transactions: transactions }
     })
-    console.log(response.data)
     res.send('success')
   } catch (err) {
-    console.log(err.message)
     res.status(400).send(err.message)
   }
 })
