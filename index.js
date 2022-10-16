@@ -10,6 +10,7 @@ const axios = require('axios')
 const users = require('./users.json')
 const fs = require('fs')
 const { Client: Notion, collectPaginatedAPI } = require('@notionhq/client')
+const { google } = require('googleapis')
 
 const {
   google: {
@@ -64,11 +65,17 @@ const oauth2Client = new OAuth2(
   `${SERVER}/access`
 )
 
+const gmail = google.gmail({
+  version: 'v1',
+  auth: oauth2Client
+})
+
 const saveUsers = () =>
   fs.writeFile('./users.json', JSON.stringify(users), () => {})
 
 app.use('/auth/google/request', express.json())
 app.use('/auth/google/requestWithId', express.json({ limit: '50mb' }))
+app.use('/auth/google/actionWithId', express.json({ limit: '50mb' }))
 app.use('/auth/google/registerId', express.json())
 app.use('/auth/google/registerTokens', express.json())
 app.use('/auth/notion/getDatabases', express.json())
@@ -237,6 +244,44 @@ const makeRequest = async (user_email, request) => {
   }
   return result
 }
+
+app.post('/auth/google/actionWithId', async (req, res) => {
+  try {
+    const user_email = getEmailFromQuery(req)
+    oauth2Client.setCredentials(users[user_email].tokens)
+    const initialCredentials = { ...oauth2Client.credentials }
+
+    const options = req.body
+    let action
+    console.log('new action:', req.body, req.query)
+    switch (req.query.type) {
+      case 'email.messages.send':
+        action = () => gmail.users.messages.send(options)
+        break
+      default:
+        break
+    }
+
+    action().then(
+      result => {
+        res.send(result.data)
+        if (
+          oauth2Client.credentials.access_token !==
+          initialCredentials.access_token
+        ) {
+          users[user_email].tokens = { ...oauth2Client.credentials }
+          saveUsers()
+        }
+      },
+      err => {
+        console.log(err.message)
+        res.status(400).send(err.message)
+      }
+    )
+  } catch (err) {
+    res.status(400).send(err.message)
+  }
+})
 
 app.post('/auth/google/requestWithId', async (req, res) => {
   try {
