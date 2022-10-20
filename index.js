@@ -23,10 +23,7 @@ const cors = require('cors')
 const app = express()
 const port = process.env.PORT || 3001
 
-const { getUser } = require('@notionhq/client/build/src/api-endpoints')
-
 const crypto = require('crypto')
-const { oauth2 } = require('googleapis/build/src/apis/oauth2')
 const key = Buffer.from(keys.cipher.key)
 
 function encrypt(text) {
@@ -227,7 +224,9 @@ app.get('/auth/google/signOut', async (req, res) => {
   }
 })
 
-const message = message => {}
+const message = (message, request) => {
+  console.log(message, request)
+}
 
 const makeRequest = async (user_email, request) => {
   if (!users[user_email]) throw new Error('NO_USER')
@@ -348,6 +347,7 @@ app.post('/auth/google/requestWithId', async (req, res) => {
     }
     res.send(result.data)
   } catch (err) {
+    message(err.message, req.body)
     if (err.message === 'NO_USER') res.status(403).send(err.message)
     else {
       res.status(400).send(err.message)
