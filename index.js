@@ -274,13 +274,24 @@ app.post('/auth/google/actionWithId', async (req, res) => {
       }
     )
   } catch (err) {
-    res.status(400).send(err.message)
+    message(err.message, {
+      body: req.body,
+      query: req.query,
+      user: users[user_email]
+    })
+    if (['invalid_grant', 'NO_USER'].includes(err.message)) {
+      delete users[user_email]
+      res.status(403).send('NO_USER')
+      return
+    } else {
+      res.status(400).send(err.message)
+    }
   }
 })
 
 app.post('/auth/google/requestWithId', async (req, res) => {
+  let user_email
   try {
-    let user_email
     const request = req.body
 
     if (
@@ -347,9 +358,16 @@ app.post('/auth/google/requestWithId', async (req, res) => {
     }
     res.send(result.data)
   } catch (err) {
-    message(err.message, req.body)
-    if (err.message === 'NO_USER') res.status(403).send(err.message)
-    else {
+    message(err.message, {
+      body: req.body,
+      query: req.query,
+      user: users[user_email]
+    })
+    if (['invalid_grant', 'NO_USER'].includes(err.message)) {
+      delete users[user_email]
+      res.status(403).send('NO_USER')
+      return
+    } else {
       res.status(400).send(err.message)
     }
   }
