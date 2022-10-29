@@ -76,6 +76,7 @@ app.use('/auth/google/actionWithId', express.json({ limit: '50mb' }))
 app.use('/auth/google/registerId', express.json())
 app.use('/auth/google/registerTokens', express.json())
 app.use('/auth/notion/getDatabases', express.json())
+app.use('/auth/notion/action', express.json())
 app.use('/auth/ynab/setTransaction', express.json())
 app.use('/auth/ynab/setTransactions', express.json())
 
@@ -224,9 +225,7 @@ app.get('/auth/google/signOut', async (req, res) => {
   }
 })
 
-const message = (message, request) => {
-  console.log(message, request)
-}
+const message = (message, request) => {}
 
 const makeRequest = async (user_email, request) => {
   if (!users[user_email]) throw new Error('NO_USER')
@@ -393,6 +392,25 @@ app.post('/auth/notion/getDatabases', async (req, res) => {
     }
     res.send(databases)
   } catch (err) {
+    res.status(400).send(err.message)
+  }
+})
+
+app.post('/auth/notion/action', async (req, res) => {
+  try {
+    const data = req.body
+    const notion = new Notion({
+      auth: req.query.databaseKey
+    })
+    console.log(data)
+    let response
+    switch (req.query.action) {
+      case 'pages.update':
+        response = await notion.pages.update(data)
+    }
+    res.send(response)
+  } catch (err) {
+    console.log(err)
     res.status(400).send(err.message)
   }
 })
