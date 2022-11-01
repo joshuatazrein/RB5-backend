@@ -9,7 +9,11 @@ const keys = require('./keys.json')
 const axios = require('axios')
 const users = require('./users.json')
 const fs = require('fs')
-const { Client: Notion, collectPaginatedAPI } = require('@notionhq/client')
+const {
+  Client: Notion,
+  collectPaginatedAPI,
+  iteratePaginatedAPI
+} = require('@notionhq/client')
 const { google } = require('googleapis')
 
 const {
@@ -225,7 +229,9 @@ app.get('/auth/google/signOut', async (req, res) => {
   }
 })
 
-const message = (message, request) => {}
+const message = (message, request) => {
+  console.log(message)
+}
 
 const makeRequest = async (user_email, request) => {
   if (!users[user_email]) throw new Error('NO_USER')
@@ -283,6 +289,7 @@ app.post('/auth/google/actionWithId', async (req, res) => {
       res.status(403).send('NO_USER')
       return
     } else {
+      message(err.message)
       res.status(400).send(err.message)
     }
   }
@@ -367,52 +374,69 @@ app.post('/auth/google/requestWithId', async (req, res) => {
       res.status(403).send('NO_USER')
       return
     } else {
+      message(err.message, req)
       res.status(400).send(err.message)
     }
-  }
-})
-
-app.post('/auth/notion/getDatabases', async (req, res) => {
-  try {
-    const { databaseKey, databaseIds } = req.body
-    const notion = new Notion({
-      auth: databaseKey
-    })
-    const databases = []
-    for (let database_id of databaseIds) {
-      const rawDatabase = await notion.databases.retrieve({
-        database_id
-      })
-
-      const rawContent = await collectPaginatedAPI(notion.databases.query, {
-        database_id
-      })
-
-      databases.push({ rawDatabase, rawContent })
-    }
-    res.send(databases)
-  } catch (err) {
-    res.status(400).send(err.message)
   }
 })
 
 app.post('/auth/notion/action', async (req, res) => {
   try {
     const data = req.body
+    const user_email = getEmailFromQuery(req)
+    const tokens = users[user_email].notion_tokens
     const notion = new Notion({
-      auth: req.query.databaseKey
+      auth: tokens.access_token
     })
-    console.log(data)
+    console.log(user_email, tokens.access_token, data)
     let response
     switch (req.query.action) {
+      case 'search':
+        response = await notion.search(data)
+        break
+      case 'databases.retrieve':
+        response = await notion.databases.retrieve(data)
+        break
+      case 'databases.query':
+        response = await collectPaginatedAPI(notion.databases.query, data)
+        break
       case 'pages.update':
         response = await notion.pages.update(data)
+        break
+      default:
+        break
     }
     res.send(response)
   } catch (err) {
-    console.log(err)
+    message(err.message)
     res.status(400).send(err.message)
   }
+})
+
+app.get('/auth/notion/register', async (req, res) => {
+  const user_email = getEmailFromQuery({ query: { user_id: req.query.state } })
+  const basicHeader = Buffer.from(
+    `${keys.notion.client_id}:${keys.notion.client_secret}`
+  ).toString('base64')
+  const token = await axios
+    .request({
+      method: 'POST',
+      url: 'https://api.notion.com/v1/oauth/token',
+      headers: {
+        Authorization: `Basic ${basicHeader}`
+      },
+      data: {
+        grant_type: 'authorization_code',
+        code: req.query.code,
+        redirect_uri: `${SERVER}/notion/register`
+      }
+    })
+    .catch(err => console.log(err))
+  users[user_email].notion_tokens = token.data
+  saveUsers()
+  res.redirect(
+    `${ORIGIN}?databaseKey=${encodeURIComponent(token.data.workspace_name)}`
+  )
 })
 
 app.get('/auth/ynab/getBudget', async (req, res) => {
@@ -460,6 +484,7 @@ app.get('/auth/ynab/getBudget', async (req, res) => {
 
     res.send(budget)
   } catch (err) {
+    message(err.message)
     res.status(400).send(err.message)
   }
 })
@@ -476,6 +501,7 @@ app.post('/auth/ynab/setTransaction', async (req, res) => {
     })
     res.send('success')
   } catch (err) {
+    message(err.message)
     res.status(400).send(err.message)
   }
 })
@@ -492,6 +518,7 @@ app.post('/auth/ynab/setTransactions', async (req, res) => {
     })
     res.send('success')
   } catch (err) {
+    message(err.message)
     res.status(400).send(err.message)
   }
 })
