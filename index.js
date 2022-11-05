@@ -15,7 +15,7 @@ const {
   iteratePaginatedAPI
 } = require('@notionhq/client')
 const { google } = require('googleapis')
-
+const ynab = require('ynab')
 const {
   google: {
     auth: { OAuth2 }
@@ -445,107 +445,123 @@ app.get('/auth/notion/register', async (req, res) => {
 })
 
 app.get('/auth/ynab/register', async (req, res) => {
-  const user_email = getEmailFromQuery({ query: { user_id: req.query.state } })
-  const token = await axios
-    .request({
-      method: 'POST',
-      url: 'https://app.youneedabudget.com/oauth/token',
-      params: {
-        client_id: keys.ynab.client_id,
-        client_secret: keys.ynab.client_secret,
-        redirect_uri: `${SERVER}/ynab/register`,
-        grant_type: 'authorization_code',
-        code: req.query.code
-      }
-    })
-    .catch(err => message(err))
-  users[user_email].notion_tokens = token.data
-  saveUsers()
-  res.redirect(
-    `${ORIGIN}?databaseKey=${encodeURIComponent(token.data.workspace_name)}`
-  )
-})
-
-app.get('/auth/ynab/getBudget', async (req, res) => {
   try {
-    const access_token = req.query.access_token
-    const budgetInfo = (
-      await axios.request({
-        url: 'https://api.youneedabudget.com/v1/budgets',
-        headers: {
-          Authorization: `bearer ${access_token}`
+    console.log(req.query)
+    const user_email = getEmailFromQuery({
+      query: { user_id: decodeURIComponent(req.query.state) }
+    })
+    const token = await axios
+      .request({
+        method: 'POST',
+        url: 'https://app.youneedabudget.com/oauth/token',
+        params: {
+          client_id: keys.ynab.client_id,
+          client_secret: keys.ynab.client_secret,
+          redirect_uri: `${SERVER}/ynab/register`,
+          grant_type: 'authorization_code',
+          code: req.query.code
         }
       })
-    ).data.data.budgets.sort((budgetA, budgetB) =>
-      budgetA.last_modified_on > budgetB.last_modified_on ? -1 : 1
-    )[0]
+      .catch(err => message(err))
+    console.log(token)
 
-    const budget = (
-      await axios.request({
-        url: `https://api.youneedabudget.com/v1/budgets/${budgetInfo.id}`,
-        headers: {
-          Authorization: `bearer ${access_token}`
-        }
-      })
-    ).data.data.budget
-
-    const transactions = (
-      await axios.request({
-        url: `https://api.youneedabudget.com/v1/budgets/${budgetInfo.id}/transactions`,
-        headers: {
-          Authorization: `bearer ${access_token}`
-        }
-      })
-    ).data.data.transactions
-
-    budget.transactions = transactions
-    budget.categories = budget.categories.filter(
-      category => !category.hidden && !category.deleted
-    )
-    budget.category_groups = budget.category_groups.filter(
-      group =>
-        !group.hidden &&
-        !group.deleted &&
-        !['Hidden Categories', 'Internal Master Category'].includes(group.name)
-    )
-
-    res.send(budget)
+    users[user_email].ynab_tokens = token.data
+    const ynabAPI = new ynab.API(token.data.access_token)
+    const userInfo = await ynabAPI.user.getUser()
+    console.log(userInfo)
+    saveUsers()
+    res.redirect(`${ORIGIN}?budgetKey=true`)
   } catch (err) {
-    message(err.message)
-    res.status(400).send(err.message)
+    message(err)
   }
 })
 
-app.post('/auth/ynab/setTransaction', async (req, res) => {
+app.post('/auth/ynab/action', async (req, res) => {
   try {
-    const access_token = req.query.access_token
-    const transaction = req.body
-    const response = await axios.request({
-      method: 'PUT',
-      url: `https://api.youneedabudget.com/v1/budgets/${req.query.budget_id}/transactions/${transaction.id}`,
-      headers: { Authorization: `bearer ${access_token}` },
-      data: { transaction: transaction }
-    })
-    res.send('success')
-  } catch (err) {
-    message(err.message)
-    res.status(400).send(err.message)
-  }
-})
+    const user_email = getEmailFromQuery(req)
+    let tokens = users[user_email].ynab_tokens
+    if (tokens.created_at + tokens.expires_in <= new Date().getTime()) {
+      tokens = (
+        await axios.request({
+          method: 'POST',
+          url: 'https://app.youneedabudget.com/oauth/token',
+          params: {
+            client_id: keys.ynab.client_id,
+            client_secret: keys.ynab.client_secret,
+            grant_type: 'refresh_token',
+            refresh_token: tokens.refresh_token
+          }
+        })
+      ).data
+      console.log('NEW TOKENS', tokens)
+      users[user_email].ynab_tokens = tokens
+      saveUsers()
+    }
+    const { access_token } = tokens
+    // const ynabAPI = new ynab.API(access_token)
+    switch (req.query.action) {
+      case 'getBudgets':
+        const budget = (
+          await axios.request({
+            url: `https://api.youneedabudget.com/v1/budgets/default`,
+            headers: {
+              Authorization: `bearer ${access_token}`
+            }
+          })
+        ).data.data.budget
 
-app.post('/auth/ynab/setTransactions', async (req, res) => {
-  try {
-    const access_token = req.query.access_token
-    const transactions = req.body
-    const response = await axios.request({
-      method: 'PATCH',
-      url: `https://api.youneedabudget.com/v1/budgets/${req.query.budget_id}/transactions`,
-      headers: { Authorization: `bearer ${access_token}` },
-      data: { transactions: transactions }
-    })
-    res.send('success')
+        const transactions = (
+          await axios.request({
+            url: `https://api.youneedabudget.com/v1/budgets/default/transactions`,
+            params: {
+              type: 'unapproved'
+            },
+            headers: {
+              Authorization: `bearer ${access_token}`
+            }
+          })
+        ).data.data.transactions
+
+        budget.transactions = transactions
+        budget.categories = budget.categories.filter(
+          category => !category.hidden && !category.deleted
+        )
+        budget.category_groups = budget.category_groups.filter(
+          group =>
+            !group.hidden &&
+            !group.deleted &&
+            !['Hidden Categories', 'Internal Master Category'].includes(
+              group.name
+            )
+        )
+
+        res.send(budget)
+        break
+      case 'setTransaction':
+        const transaction = req.body
+        response = await axios.request({
+          method: 'PUT',
+          url: `https://api.youneedabudget.com/v1/budgets/default/transactions/${transaction.id}`,
+          headers: { Authorization: `bearer ${access_token}` },
+          data: { transaction: transaction }
+        })
+        res.send('success')
+        break
+      case 'setTransactions':
+        const multTransactions = req.body
+        response = await axios.request({
+          method: 'PATCH',
+          url: `https://api.youneedabudget.com/v1/budgets/default/transactions`,
+          headers: { Authorization: `bearer ${access_token}` },
+          data: { transactions: multTransactions }
+        })
+        res.send('success')
+        break
+      default:
+        break
+    }
   } catch (err) {
-    message(err.message)
+    message(err)
     res.status(400).send(err.message)
   }
 })
