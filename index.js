@@ -83,6 +83,7 @@ app.use('/auth/notion/getDatabases', express.json())
 app.use('/auth/notion/action', express.json())
 app.use('/auth/ynab/setTransaction', express.json())
 app.use('/auth/ynab/setTransactions', express.json())
+app.use('/auth/moments/action', express.json())
 
 var allowedDomains = [
   'capacitor://localhost',
@@ -114,7 +115,12 @@ app.get('/auth/access', async (req, res) => {
 
       if (!users[user_email]) {
         const encryptedId = encrypt(user_email)
-        users[user_email] = { tokens, encryptedId, sharedLists: [] }
+        users[user_email] = {
+          tokens,
+          encryptedId,
+          sharedLists: [],
+          moments: {}
+        }
         saveUsers()
       }
 
@@ -153,7 +159,7 @@ app.post('/auth/google/registerTokens', async (req, res) => {
     const user_email = userInfo.email
     if (!users[user_email]) {
       const encryptedId = encrypt(user_email)
-      users[user_email] = { tokens, encryptedId, sharedLists: [] }
+      users[user_email] = { tokens, encryptedId, sharedLists: [], moments: {} }
       saveUsers()
     }
 
@@ -388,7 +394,6 @@ app.post('/auth/notion/action', async (req, res) => {
     const notion = new Notion({
       auth: tokens.access_token
     })
-    console.log(user_email, tokens.access_token, data)
     let response
     switch (req.query.action) {
       case 'search':
@@ -431,7 +436,29 @@ app.get('/auth/notion/register', async (req, res) => {
         redirect_uri: `${SERVER}/notion/register`
       }
     })
-    .catch(err => console.log(err))
+    .catch(err => message(err))
+  users[user_email].notion_tokens = token.data
+  saveUsers()
+  res.redirect(
+    `${ORIGIN}?databaseKey=${encodeURIComponent(token.data.workspace_name)}`
+  )
+})
+
+app.get('/auth/ynab/register', async (req, res) => {
+  const user_email = getEmailFromQuery({ query: { user_id: req.query.state } })
+  const token = await axios
+    .request({
+      method: 'POST',
+      url: 'https://app.youneedabudget.com/oauth/token',
+      params: {
+        client_id: keys.ynab.client_id,
+        client_secret: keys.ynab.client_secret,
+        redirect_uri: `${SERVER}/ynab/register`,
+        grant_type: 'authorization_code',
+        code: req.query.code
+      }
+    })
+    .catch(err => message(err))
   users[user_email].notion_tokens = token.data
   saveUsers()
   res.redirect(
@@ -516,6 +543,31 @@ app.post('/auth/ynab/setTransactions', async (req, res) => {
       headers: { Authorization: `bearer ${access_token}` },
       data: { transactions: transactions }
     })
+    res.send('success')
+  } catch (err) {
+    message(err.message)
+    res.status(400).send(err.message)
+  }
+})
+
+app.post('/auth/moments/action', async (req, res) => {
+  try {
+    const user_email = getEmailFromQuery(req)
+    const momentID = req.query.mode + '::' + req.query.id
+    switch (req.query.action) {
+      case 'delete':
+        delete users[user_email].moments[momentID]
+        break
+      case 'set':
+        users[user_email].moments[momentID] = req.body
+        break
+      case 'load':
+        res.json(users[user_email].moments)
+        return
+      default:
+        break
+    }
+    saveUsers()
     res.send('success')
   } catch (err) {
     message(err.message)
