@@ -15,7 +15,6 @@ const {
   iteratePaginatedAPI
 } = require('@notionhq/client')
 const { google } = require('googleapis')
-const ynab = require('ynab')
 const {
   google: {
     auth: { OAuth2 }
@@ -466,9 +465,6 @@ app.get('/auth/ynab/register', async (req, res) => {
     console.log(token)
 
     users[user_email].ynab_tokens = token.data
-    const ynabAPI = new ynab.API(token.data.access_token)
-    const userInfo = await ynabAPI.user.getUser()
-    console.log(userInfo)
     saveUsers()
     res.redirect(`${ORIGIN}?budgetKey=true`)
   } catch (err) {
@@ -498,7 +494,6 @@ app.post('/auth/ynab/action', async (req, res) => {
       saveUsers()
     }
     const { access_token } = tokens
-    // const ynabAPI = new ynab.API(access_token)
     switch (req.query.action) {
       case 'getBudgets':
         const budget = (
