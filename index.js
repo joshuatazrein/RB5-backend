@@ -445,7 +445,6 @@ app.get('/auth/notion/register', async (req, res) => {
 
 app.get('/auth/ynab/register', async (req, res) => {
   try {
-    console.log(req.query)
     const user_email = getEmailFromQuery({
       query: { user_id: decodeURIComponent(req.query.state) }
     })
@@ -462,7 +461,6 @@ app.get('/auth/ynab/register', async (req, res) => {
         }
       })
       .catch(err => message(err))
-    console.log(token)
 
     users[user_email].ynab_tokens = token.data
     saveUsers()
@@ -489,7 +487,6 @@ app.post('/auth/ynab/action', async (req, res) => {
           }
         })
       ).data
-      console.log('NEW TOKENS', tokens)
       users[user_email].ynab_tokens = tokens
       saveUsers()
     }
