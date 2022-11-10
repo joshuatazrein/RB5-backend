@@ -234,7 +234,7 @@ app.get('/auth/google/signOut', async (req, res) => {
 })
 
 const message = (message, request) => {
-  console.trace(message)
+  console.trace(message + '\n' + JSON.stringify(request))
 }
 
 const makeRequest = async (user_email, request) => {
@@ -411,7 +411,7 @@ app.post('/auth/notion/action', async (req, res) => {
     }
     res.send(response)
   } catch (err) {
-    message(err.message)
+    message(err.message, { query: req.query, body: req.body })
     res.status(400).json(err)
   }
 })
