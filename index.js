@@ -234,8 +234,7 @@ app.get('/auth/google/signOut', async (req, res) => {
 })
 
 const message = (message, request) => {
-  console.log(message)
-  process.stderr.write('\n\n' + message)
+  console.trace(message)
 }
 
 const makeRequest = async (user_email, request) => {
