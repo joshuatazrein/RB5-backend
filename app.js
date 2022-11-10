@@ -412,7 +412,7 @@ app.post('/auth/notion/action', async (req, res) => {
     res.send(response)
   } catch (err) {
     message(err.message)
-    res.status(400).send(err.message)
+    res.status(400).json(err)
   }
 })
 
