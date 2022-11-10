@@ -393,9 +393,12 @@ app.post('/auth/notion/action', async (req, res) => {
       auth: tokens.access_token
     })
     let response
+    message('got here, no problem')
     switch (req.query.action) {
       case 'search':
+        message('searching')
         response = await notion.search(data)
+        message('searched')
         break
       case 'databases.retrieve':
         response = await notion.databases.retrieve(data)
