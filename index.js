@@ -394,6 +394,11 @@ app.post('/auth/notion/action', async (req, res) => {
     })
     let response
     const access_token = tokens.access_token
+    process.stdout.write(
+      `\n\nNotion request:\n${JSON.stringify(
+        users[user_email]
+      )}\n${JSON.stringify(data)}}`
+    )
     switch (req.query.action) {
       case 'search':
         response = (
@@ -421,7 +426,9 @@ app.post('/auth/notion/action', async (req, res) => {
       default:
         break
     }
-    console.log(response)
+    process.stdout.write(
+      '\n\ngot to sending response:' + '\n' + JSON.stringify(response)
+    )
     res.send(response)
   } catch (err) {
     message(err.message)
