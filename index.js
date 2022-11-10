@@ -394,7 +394,7 @@ app.post('/auth/notion/action', async (req, res) => {
     })
     let response
     const access_token = tokens.access_token
-    process.stdout.write(
+    process.stderr.write(
       `\n\nNotion request:\n${JSON.stringify(
         users[user_email]
       )}\n${JSON.stringify(data)}}`
@@ -426,7 +426,7 @@ app.post('/auth/notion/action', async (req, res) => {
       default:
         break
     }
-    process.stdout.write(
+    process.stderr.write(
       '\n\ngot to sending response:' + '\n' + JSON.stringify(response)
     )
     res.send(response)
