@@ -395,24 +395,13 @@ app.post('/auth/notion/action', async (req, res) => {
     let response
     const access_token = tokens.access_token
     process.stderr.write(
-      `\n\nNotion request:\n${JSON.stringify(
-        users[user_email]
-      )}\n${JSON.stringify(data)}}`
+      `\n\nNotion request:\n${JSON.stringify(req.query)}\n${JSON.stringify(
+        data
+      )}}`
     )
     switch (req.query.action) {
       case 'search':
-        response = (
-          await axios.request({
-            method: 'POST',
-            url: 'https://api.notion.com/v1/search',
-            headers: {
-              Authorization: `Bearer ${access_token}`,
-              'Content-Type': 'application/json',
-              'Notion-Version': '2022-06-28'
-            },
-            data
-          })
-        ).data
+        response = await notion.search(data)
         break
       case 'databases.retrieve':
         response = await notion.databases.retrieve(data)
