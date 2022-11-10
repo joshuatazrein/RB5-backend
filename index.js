@@ -79,9 +79,8 @@ app.use('/auth/google/actionWithId', express.json({ limit: '50mb' }))
 app.use('/auth/google/registerId', express.json())
 app.use('/auth/google/registerTokens', express.json())
 app.use('/auth/notion/getDatabases', express.json())
+app.use('/auth/notion/register', express.json())
 app.use('/auth/notion/action', express.json())
-app.use('/auth/ynab/setTransaction', express.json())
-app.use('/auth/ynab/setTransactions', express.json())
 app.use('/auth/moments/action', express.json())
 
 var allowedDomains = [
