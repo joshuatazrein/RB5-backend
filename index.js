@@ -393,12 +393,21 @@ app.post('/auth/notion/action', async (req, res) => {
       auth: tokens.access_token
     })
     let response
-    message('got here, no problem')
+    const access_token = tokens.access_token
     switch (req.query.action) {
       case 'search':
-        message('searching')
-        response = await notion.search(data)
-        message('searched')
+        response = (
+          await axios.request({
+            method: 'POST',
+            url: 'https://api.notion.com/v1/search',
+            headers: {
+              Authorization: `Bearer ${access_token}`,
+              'Content-Type': 'application/json',
+              'Notion-Version': '2022-06-28'
+            },
+            data
+          })
+        ).data
         break
       case 'databases.retrieve':
         response = await notion.databases.retrieve(data)
@@ -412,10 +421,11 @@ app.post('/auth/notion/action', async (req, res) => {
       default:
         break
     }
+    console.log(response)
     res.send(response)
   } catch (err) {
-    message(err.message, { query: req.query, body: req.body })
-    res.status(400).json(err)
+    message(err.message)
+    res.status(400).send(err.message)
   }
 })
 
