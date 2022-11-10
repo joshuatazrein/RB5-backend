@@ -29,6 +29,19 @@ const port = process.env.PORT || 3001
 const crypto = require('crypto')
 const key = Buffer.from(keys.cipher.key)
 
+if (!Object.entries) {
+  Object.entries = function (obj) {
+    var props = Object.keys(obj),
+      i = props.length,
+      resArray = new Array(i)
+    while (i--) {
+      resArray[i] = [ownProps[i], obj[ownProps[i]]]
+    }
+
+    return resArray
+  }
+}
+
 function encrypt(text) {
   const iv = crypto.randomBytes(16)
   const cipher = crypto.createCipheriv('aes-256-cbc', key, iv)
@@ -393,7 +406,6 @@ app.post('/auth/notion/action', async (req, res) => {
       auth: tokens.access_token
     })
     let response
-    const access_token = tokens.access_token
     process.stderr.write(
       `\n\nNotion request:\n${JSON.stringify(req.query)}\n${JSON.stringify(
         data
