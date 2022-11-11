@@ -20,6 +20,7 @@ const {
     auth: { OAuth2 }
   }
 } = require('googleapis')
+require('polyfill-object.fromentries')
 
 const express = require('express')
 const cors = require('cors')
