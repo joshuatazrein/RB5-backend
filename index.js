@@ -248,7 +248,8 @@ app.get('/auth/google/signOut', async (req, res) => {
 })
 
 const message = (message, request) => {
-  console.trace(message + '\n' + JSON.stringify(request))
+  console.trace(message)
+  // console.trace(message + '\n' + JSON.stringify(request))
 }
 
 const makeRequest = async (user_email, request) => {
@@ -317,78 +318,78 @@ app.post('/auth/google/requestWithId', async (req, res) => {
   let user_email
   try {
     const request = req.body
-
-    if (
-      (request.url && /\/[^@\/]+@\w+\.\w+:\w+\/*/.test(request.url)) ||
-      (request.params &&
-        request.params.tasklist &&
-        request.params.tasklist.includes(':'))
-    ) {
-      let splitId
-      if (request.url && /\/[^@\/]+@\w+\.\w+:\w+\/*/.test(request.url)) {
-        // it's a shared list, so use a different credential (mutates request itself)
-        splitId = request.url
-          .match(/\/[^@\/]+@\w+\.\w+:\w+\/*/)[0]
-          .slice(1, -1)
-          .split(':')
-        request.url = request.url.replace(splitId.join(':'), splitId[1])
-      }
-      if (
-        request.params &&
-        request.params.tasklist &&
-        request.params.tasklist.includes(':')
-      ) {
-        splitId = request.params.tasklist.split(':')
-        request.params.tasklist = splitId[1]
-      }
-      user_email = splitId[0]
-    } else {
-      user_email = getEmailFromQuery(req)
-    }
+    user_email = getEmailFromQuery(req)
+    // if (
+    //   (request.url && /\/[^@\/]+@\w+\.\w+:\w+\/*/.test(request.url)) ||
+    //   (request.params &&
+    //     request.params.tasklist &&
+    //     request.params.tasklist.includes(':'))
+    // ) {
+    //   let splitId
+    //   if (request.url && /\/[^@\/]+@\w+\.\w+:\w+\/*/.test(request.url)) {
+    //     // it's a shared list, so use a different credential (mutates request itself)
+    //     splitId = request.url
+    //       .match(/\/[^@\/]+@\w+\.\w+:\w+\/*/)[0]
+    //       .slice(1, -1)
+    //       .split(':')
+    //     request.url = request.url.replace(splitId.join(':'), splitId[1])
+    //   }
+    //   if (
+    //     request.params &&
+    //     request.params.tasklist &&
+    //     request.params.tasklist.includes(':')
+    //   ) {
+    //     splitId = request.params.tasklist.split(':')
+    //     request.params.tasklist = splitId[1]
+    //   }
+    //   user_email = splitId[0]
+    // } else {
+    //   user_email = getEmailFromQuery(req)
+    // }
     const result = await makeRequest(user_email, request)
 
-    if (
-      request.url === 'https://tasks.googleapis.com/tasks/v1/users/@me/lists'
-    ) {
-      // adds in shared tasklists from RiverBank when listing task lists
-      const mySharedLists = [...users[user_email].sharedLists]
-      for (let sharedListId of mySharedLists) {
-        const sharedUserEmail = sharedListId.split(':')[0]
-        const listId = sharedListId.split(':')[1]
+    // if (
+    //   request.url === 'https://tasks.googleapis.com/tasks/v1/users/@me/lists'
+    // ) {
+    //   // adds in shared tasklists from RiverBank when listing task lists
+    //   const mySharedLists = [...users[user_email].sharedLists]
+    //   for (let sharedListId of mySharedLists) {
+    //     const sharedUserEmail = sharedListId.split(':')[0]
+    //     const listId = sharedListId.split(':')[1]
 
-        if (!users[sharedUserEmail]) {
-          message('NO_USER, deleting list')
-          users[user_email].sharedLists.splice(
-            users[user_email].sharedLists.indexOf(sharedListId),
-            1
-          )
-          continue
-        }
+    //     if (!users[sharedUserEmail]) {
+    //       message('NO_USER, deleting list')
+    //       users[user_email].sharedLists.splice(
+    //         users[user_email].sharedLists.indexOf(sharedListId),
+    //         1
+    //       )
+    //       continue
+    //     }
 
-        let sharedList
-        const sharedRequest = {
-          method: 'GET',
-          url: `https://tasks.googleapis.com/tasks/v1/users/@me/lists/${listId}`
-        }
+    //     let sharedList
+    //     const sharedRequest = {
+    //       method: 'GET',
+    //       url: `https://tasks.googleapis.com/tasks/v1/users/@me/lists/${listId}`
+    //     }
 
-        try {
-          sharedList = (await makeRequest(sharedUserEmail, sharedRequest)).data
-          sharedList.id = sharedListId
-          result.data.items.push(sharedList)
-        } catch (err) {
-          message('failed: ' + err.message)
-        }
-      }
-    }
+    //     try {
+    //       sharedList = (await makeRequest(sharedUserEmail, sharedRequest)).data
+    //       sharedList.id = sharedListId
+    //       result.data.items.push(sharedList)
+    //     } catch (err) {
+    //       message('failed: ' + err.message)
+    //     }
+    //   }
+    // }
     res.send(result.data)
   } catch (err) {
     message(err.message, {
-      body: req.body,
-      query: req.query,
-      user: users[user_email]
+      body: { ...req.body },
+      query: { ...req.query }
     })
     if (['invalid_grant', 'NO_USER'].includes(err.message)) {
       delete users[user_email]
+      saveUsers()
       res.status(403).send('NO_USER')
       return
     } else {
@@ -407,11 +408,6 @@ app.post('/auth/notion/action', async (req, res) => {
       auth: tokens.access_token
     })
     let response
-    process.stderr.write(
-      `\n\nNotion request:\n${JSON.stringify(req.query)}\n${JSON.stringify(
-        data
-      )}}`
-    )
     switch (req.query.action) {
       case 'search':
         response = await notion.search(data)
@@ -428,9 +424,6 @@ app.post('/auth/notion/action', async (req, res) => {
       default:
         break
     }
-    process.stderr.write(
-      '\n\ngot to sending response:' + '\n' + JSON.stringify(response)
-    )
     res.send(response)
   } catch (err) {
     message(err.message)
