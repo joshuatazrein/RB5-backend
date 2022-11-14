@@ -396,6 +396,20 @@ app.post('/auth/google/requestWithId', async (req, res) => {
   }
 })
 
+app.get('/auth/notion/requestKey', async (req, res) => {
+  try {
+    const user_email = getEmailFromQuery(req)
+    if (users[user_email].notion_tokens) {
+      res.send(users[user_email].notion_tokens.workspace_name)
+    } else {
+      res.send('')
+    }
+  } catch (err) {
+    message(err.message)
+    res.status(400).send(err.message)
+  }
+})
+
 app.post('/auth/notion/action', async (req, res) => {
   try {
     const data = req.body
@@ -578,7 +592,8 @@ app.post('/auth/moments/action', async (req, res) => {
         delete users[user_email].moments[momentID]
         break
       case 'set':
-        users[user_email].moments[momentID] = req.body
+        console.log(req.body.time)
+        users[user_email].moments[momentID] = req.body.time
         break
       case 'load':
         res.json(users[user_email].moments)
