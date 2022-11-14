@@ -267,8 +267,9 @@ const makeRequest = async (user_email, request) => {
 }
 
 app.post('/auth/google/actionWithId', async (req, res) => {
+  let user_email
   try {
-    const user_email = getEmailFromQuery(req)
+    user_email = getEmailFromQuery(req)
     oauth2Client.setCredentials(users[user_email].tokens)
     const initialCredentials = { ...oauth2Client.credentials }
 
@@ -276,27 +277,22 @@ app.post('/auth/google/actionWithId', async (req, res) => {
     let action
     switch (req.query.type) {
       case 'email.messages.send':
-        action = () => gmail.users.messages.send(options)
+        action = async () => await gmail.users.messages.send(options)
         break
       default:
         break
     }
 
-    action().then(
-      result => {
-        res.send(result.data)
-        if (
-          oauth2Client.credentials.access_token !==
-          initialCredentials.access_token
-        ) {
-          users[user_email].tokens = { ...oauth2Client.credentials }
-          saveUsers()
-        }
-      },
-      err => {
-        res.status(400).send(err.message)
-      }
-    )
+    const response = await action()
+
+    if (
+      oauth2Client.credentials.access_token !== initialCredentials.access_token
+    ) {
+      users[user_email].tokens = { ...oauth2Client.credentials }
+      saveUsers()
+    }
+
+    res.send(response.data)
   } catch (err) {
     message(err.message, {
       body: req.body,
@@ -305,6 +301,7 @@ app.post('/auth/google/actionWithId', async (req, res) => {
     })
     if (['invalid_grant', 'NO_USER'].includes(err.message)) {
       delete users[user_email]
+      saveUsers()
       res.status(403).send('NO_USER')
       return
     } else {
